@@ -29,13 +29,23 @@ bloques_oposition = [
 
 opciones_asistencia = ["Asiste", "Justificado (Estudio / Test)", "Falta Injustificada"]
 
+# Franjas de 15 minutos de la tarde ampliadas hasta las 21:00
+FRANJAS_HORARIAS_POSIBLES = [
+    "16:00", "16:15", "16:30", "16:45",
+    "17:00", "17:15", "17:30", "17:45",
+    "18:00", "18:15", "18:30", "18:45",
+    "19:00", "19:15", "19:30", "19:45",
+    "20:00", "20:15", "20:30", "20:45",
+    "21:00"
+]
+
 def cargar_alumnos():
     if os.path.exists(DB_ALUMNOS):
         df = pd.read_csv(DB_ALUMNOS)
         if "Asiste_Por_Defecto" not in df.columns:
             df["Asiste_Por_Defecto"] = True
         if "Franja_Defecto" not in df.columns:
-            df["Franja_Defecto"] = "Sin preferencia (Cualquier hora)"
+            df["Franja_Defecto"] = ",".join(FRANJAS_HORARIAS_POSIBLES)
             
         for col in df.columns:
             df[col] = df[col].astype(str).replace("nan", "")
@@ -48,7 +58,7 @@ def cargar_alumnos():
             "Correo": ["" for _ in ALUMNOS_INICIALES],
             "Circunstancias": ["" for _ in ALUMNOS_INICIALES],
             "Asiste_Por_Defecto": [True for _ in ALUMNOS_INICIALES],
-            "Franja_Defecto": ["Sin preferencia (Cualquier hora)" for _ in ALUMNOS_INICIALES]
+            "Franja_Defecto": [",".join(FRANJAS_HORARIAS_POSIBLES) for _ in ALUMNOS_INICIALES]
         })
         df.to_csv(DB_ALUMNOS, index=False)
         return df
@@ -112,14 +122,7 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
     
     st.markdown("---")
     st.markdown("### 🛠️ Paso 1: Configuración Previa y Asistencia de la Sesión")
-    st.info("Indica para cada alumno su asistencia, franja horaria preferida y bloque de materia para esta convocatoria.")
-    
-    opciones_franja = [
-        "Sin preferencia (Cualquier hora)", 
-        "Solo de 16:00 a 18:00 (Tarde temprana)", 
-        "A partir de las 18:00 (Tarde tardía)",
-        "Primer turno absoluto (16:00)"
-    ]
+    st.info("Indica para cada alumno su asistencia, bloque de materia y revisa su disponibilidad de 15 minutos en esta convocatoria.")
 
     with st.form("form_configuracion_sesion"):
         configuracion_alumnos = {}
@@ -128,24 +131,32 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
             row_al = df_alumnos_db[df_alumnos_db["Alumno"] == alumno].iloc[0]
             def_asiste = bool(row_al["Asiste_Por_Defecto"])
             estado_asis_inicial = "Asiste" if def_asiste else "Falta Injustificada"
-            def_franja = row_al["Franja_Defecto"] if row_al["Franja_Defecto"] in opciones_franja else opciones_franja[0]
+            
+            franjas_str = str(row_al["Franja_Defecto"])
+            franjas_guardadas = [f.strip() for f in franjas_str.split(",") if f.strip()]
             
             with st.expander(f"👤 {alumno}"):
-                col_c1, col_c2, col_c3 = st.columns([1.5, 1.5, 2])
+                col_c1, col_c2 = st.columns([1.5, 2])
                 with col_c1:
                     estado_asis = st.selectbox("Asistencia", opciones_asistencia, index=opciones_asistencia.index(estado_asis_inicial), key=f"asis_{alumno}")
-                with col_c2:
-                    franja = st.selectbox("Franja horaria", opciones_franja, index=opciones_franja.index(def_franja), key=f"franja_{alumno}")
-                with col_c3:
                     bloque_rapido = st.selectbox("Bloque habitual", bloques_oposition, key=f"bl_rap_{alumno}")
+                with col_c2:
+                    st.markdown("**Disponibilidad horaria (15 min):**")
+                    cols_f = st.columns(4)
+                    franjas_sesion_seleccionadas = []
+                    for idx_f, hora_f in enumerate(FRANJAS_HORARIAS_POSIBLES):
+                        default_val = hora_f in franjas_guardadas
+                        with cols_f[idx_f % 4]:
+                            if st.checkbox(hora_f, value=default_val, key=f"ses_f_{alumno}_{hora_f}"):
+                                franjas_sesion_seleccionadas.append(hora_f)
                 
                 configuracion_alumnos[alumno] = {
                     "asistencia": estado_asis,
-                    "franja": franja,
-                    "bloque": bloque_rapido
+                    "bloque": bloque_rapido,
+                    "franjas": franjas_sesion_seleccionadas
                 }
         
-        actualizar_permanentes = st.checkbox("💾 Actualizar también las preferencias permanentes en los perfiles de los alumnos con estos cambios", value=False)
+        actualizar_permanentes = st.checkbox("💾 Actualizar también las disponibilidades y asistencias permanentes en los perfiles con estos cambios", value=False)
         btn_generar_parrilla = st.form_submit_button("⚙️ Generar y Bloquear Parrilla de Turnos Automática")
 
         if btn_generar_parrilla:
@@ -153,11 +164,10 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
                 if actualizar_permanentes:
                     es_asiste_bool = True if cfg["asistencia"] == "Asiste" else False
                     df_alumnos_db.loc[df_alumnos_db["Alumno"] == al, "Asiste_Por_Defecto"] = es_asiste_bool
-                    df_alumnos_db.loc[df_alumnos_db["Alumno"] == al, "Franja_Defecto"] = cfg["franja"]
+                    df_alumnos_db.loc[df_alumnos_db["Alumno"] == al, "Franja_Defecto"] = ",".join(cfg["franjas"])
             if actualizar_permanentes:
                 guardar_alumnos(df_alumnos_db)
             
-            # Registrar automáticamente las asistencias / no asistencias en el seguimiento
             for al, cfg in configuracion_alumnos.items():
                 nuevo_reg = pd.DataFrame({
                     "Fecha": [str(fecha_simulacro)], "Alumno": [al], "Bloque": [cfg["bloque"]],
@@ -183,22 +193,19 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
         for i in range(len(alumnos_asistentes)):
             franjas_horarias.append((hora_inicio + timedelta(minutes=15 * i)).strftime("%H:%M"))
         
-        def regla_orden(nombre):
-            franja_val = configuracion_alumnos[nombre]["franja"]
-            if "Primer turno" in franja_val: return 0
-            elif "16:00 a 18:00" in franja_val: return 1
-            elif "Sin preferencia" in franja_val: return 2
-            else: return 3
-            
-        alumnos_ordenados = sorted(alumnos_asistentes, key=regla_orden)
-        
         with st.form("form_ver_parrilla"):
             for idx, hora in enumerate(franjas_horarias):
                 col_h, col_a, col_t = st.columns([1, 2, 1])
                 with col_h:
                     st.markdown(f"### ⏰ {hora}")
                 with col_a:
-                    def_al = alumnos_ordenados[idx] if idx < len(alumnos_ordenados) else alumnos_asistentes[0]
+                    def_al = alumnos_asistentes[0]
+                    candidatos_disponibles = [a for a in alumnos_asistentes if hora in configuracion_alumnos[a]["franjas"]]
+                    if candidatos_disponibles:
+                        def_al = candidatos_disponibles[idx % len(candidatos_disponibles)]
+                    else:
+                        def_al = alumnos_asistentes[idx % len(alumnos_asistentes)]
+
                     st.selectbox(f"Opositor a las {hora}", alumnos_asistentes, index=alumnos_asistentes.index(def_al), key=f"parrilla_al_{idx}")
                 with col_t:
                     st.markdown(f"**Prueba:** `Lectura Tema Escrito`")
@@ -305,15 +312,12 @@ elif menu == "📊 Cuadro Resumen y Progreso":
                 fila[bloque] = detalle_str
                 
             fila["❌ Faltas Injustificadas"] = total_faltas_inj_alumno
-            
-            # Puntuación de ordenación: Temas totales menos penalización fuerte por falta injustificada (5 puntos por falta)
             score_progreso = total_temas_alumno - (total_faltas_inj_alumno * 5)
             fila["_score"] = score_progreso
             
             matriz_data.append(fila)
         
         df_matriz = pd.DataFrame(matriz_data)
-        # Ordenar de mejor a peor según la puntuación calculada
         df_matriz = df_matriz.sort_values(by="_score", ascending=False).drop(columns=["_score"]).reset_index(drop=True)
         
         st.dataframe(df_matriz, use_container_width=True)
@@ -392,17 +396,13 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
         sub_opcion = "Añadir Nuevo Opositor"
     else:
         sub_opcion = st.radio("¿Qué deseas hacer?", ["Editar Perfil Existente", "Añadir Nuevo Opositor", "Eliminar Opositor"])
-    
-    opciones_franja = [
-        "Sin preferencia (Cualquier hora)", 
-        "Solo de 16:00 a 18:00 (Tarde temprana)", 
-        "A partir de las 18:00 (Tarde tardía)",
-        "Primer turno absoluto (16:00)"
-    ]
 
     if sub_opcion == "Editar Perfil Existente" and lista_alumnos:
         alumno_editar = st.selectbox("Selecciona opositor", lista_alumnos)
         datos_actuales = df_alumnos_db[df_alumnos_db["Alumno"] == alumno_editar].iloc[0]
+        
+        franjas_str_act = str(datos_actuales["Franja_Defecto"])
+        franjas_guardadas_act = [f.strip() for f in franjas_str_act.split(",") if f.strip()]
         
         with st.form("form_editar_alumno"):
             nuevo_nombre_val = st.text_input("Nombre y Apellidos", value=str(datos_actuales["Alumno"]))
@@ -412,10 +412,16 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
             
             st.markdown("#### ⚙️ Preferencias Permanentes de Simulacro")
             val_asiste_def = bool(datos_actuales["Asiste_Por_Defecto"])
-            val_franja_def = datos_actuales["Franja_Defecto"] if datos_actuales["Franja_Defecto"] in opciones_franja else opciones_franja[0]
-            
             nuevo_asiste_def = st.checkbox("Asiste por defecto cada semana", value=val_asiste_def)
-            nueva_franja_def = st.selectbox("Franja horaria preferida por defecto", opciones_franja, index=opciones_franja.index(val_franja_def))
+            
+            st.markdown("**Disponibilidad por franjas de 15 minutos (Desmarca lo que no esté disponible):**")
+            cols_ed = st.columns(4)
+            franjas_editadas_seleccionadas = []
+            for idx_f, hora_f in enumerate(FRANJAS_HORARIAS_POSIBLES):
+                default_chk = hora_f in franjas_guardadas_act if franjas_str_act else True
+                with cols_ed[idx_f % 4]:
+                    if st.checkbox(hora_f, value=default_chk, key=f"ed_f_{alumno_editar}_{hora_f}"):
+                        franjas_editadas_seleccionadas.append(hora_f)
             
             if st.form_submit_button("Guardar Cambios"):
                 df_alumnos_db.loc[df_alumnos_db["Alumno"] == alumno_editar, "Alumno"] = nuevo_nombre_val
@@ -423,7 +429,7 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
                 df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Correo"] = nuevo_correo_val
                 df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Circunstancias"] = nuevas_circ
                 df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Asiste_Por_Defecto"] = nuevo_asiste_def
-                df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Franja_Defecto"] = nueva_franja_def
+                df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Franja_Defecto"] = ",".join(franjas_editadas_seleccionadas)
                 
                 guardar_alumnos(df_alumnos_db)
                 if alumno_editar != nuevo_nombre_val:
@@ -441,13 +447,20 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
             
             st.markdown("#### ⚙️ Preferencias Permanentes de Simulacro")
             n_asiste_def = st.checkbox("Asiste por defecto cada semana", value=True)
-            n_franja_def = st.selectbox("Franja horaria preferida por defecto", opciones_franja)
+            
+            st.markdown("**Disponibilidad por franjas de 15 minutos (Todas marcadas por defecto):**")
+            cols_nue = st.columns(4)
+            franjas_nuevas_seleccionadas = []
+            for idx_f, hora_f in enumerate(FRANJAS_HORARIAS_POSIBLES):
+                with cols_nue[idx_f % 4]:
+                    if st.checkbox(hora_f, value=True, key=f"nue_f_{hora_f}"):
+                        franjas_nuevas_seleccionadas.append(hora_f)
             
             if st.form_submit_button("Crear Opositor"):
                 if n_nombre and n_nombre not in lista_alumnos:
                     nuevo_fila = pd.DataFrame({
                         "Alumno": [n_nombre], "Telefono": [n_tel], "Correo": [n_correo], "Circunstancias": [n_circ],
-                        "Asiste_Por_Defecto": [n_asiste_def], "Franja_Defecto": [n_franja_def]
+                        "Asiste_Por_Defecto": [n_asiste_def], "Franja_Defecto": [",".join(franjas_nuevas_seleccionadas)]
                     })
                     df_alumnos_db = pd.concat([df_alumnos_db, nuevo_fila], ignore_index=True)
                     guardar_alumnos(df_alumnos_db)
@@ -471,7 +484,7 @@ elif menu == "📊 Histórico, Bloques y Desviación":
         perfil_info = df_alumnos_db[df_alumnos_db["Alumno"] == alumno_filtro]
         if not perfil_info.empty:
             p = perfil_info.iloc[0]
-            st.info(f"📞 Teléfono: {p['Telefono']} | ✉️ Correo: {p['Correo']} | 📝 Circunstancias: {p['Circunstancias']} | ⏰ Franja Habitual: `{p['Franja_Defecto']}`")
+            st.info(f"📞 Teléfono: {p['Telefono']} | ✉️ Correo: {p['Correo']} | 📝 Circunstancias: {p['Circunstancias']} | ⏰ Disponibilidad Habitual: `{p['Franja_Defecto']}`")
         
         st.markdown("---")
         st.markdown("### 🧱 Detalle por Bloque de este Opositor")
