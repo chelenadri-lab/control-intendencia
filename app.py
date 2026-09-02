@@ -30,7 +30,6 @@ bloques_oposition = [
 def cargar_alumnos():
     if os.path.exists(DB_ALUMNOS):
         df = pd.read_csv(DB_ALUMNOS)
-        # Asegurar columnas nuevas de preferencias por defecto si el CSV antiguo no las tiene
         if "Asiste_Por_Defecto" not in df.columns:
             df["Asiste_Por_Defecto"] = True
         if "Tipo_Prueba_Defecto" not in df.columns:
@@ -40,7 +39,6 @@ def cargar_alumnos():
             
         for col in df.columns:
             df[col] = df[col].astype(str).replace("nan", "")
-        # Normalizar booleanos de asistencia por defecto
         df["Asiste_Por_Defecto"] = df["Asiste_Por_Defecto"].apply(lambda x: True if str(x).lower() in ["true", "1", "yes"] else False)
         return df
     else:
@@ -61,10 +59,13 @@ def guardar_alumnos(df):
 
 def cargar_seguimiento():
     if os.path.exists(DB_SEGUIMIENTO):
-        return pd.read_csv(DB_SEGUIMIENTO)
+        df = pd.read_csv(DB_SEGUIMIENTO)
+        if "Asistencia" not in df.columns:
+            df["Asistencia"] = "Asiste"
+        return df
     else:
         df_inicial = pd.DataFrame(columns=[
-            "Fecha", "Alumno", "Bloque", "Temas_Para_Esta_Semana", 
+            "Fecha", "Alumno", "Bloque", "Asistencia", "Temas_Para_Esta_Semana", 
             "Tema_Escrito", "Tiempo_Minutos", "Estado_Semaforo", 
             "Errores_Frecuentes", "Feedback_Cualitativo"
         ])
@@ -125,7 +126,6 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
         configuracion_alumnos = {}
         
         for alumno in lista_alumnos:
-            # Recuperar datos base del alumno
             row_al = df_alumnos_db[df_alumnos_db["Alumno"] == alumno].iloc[0]
             def_asiste = bool(row_al["Asiste_Por_Defecto"])
             def_tipo = row_al["Tipo_Prueba_Defecto"] if row_al["Tipo_Prueba_Defecto"] in opciones_tipo else "Simulacro Oral"
@@ -209,11 +209,17 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
             col_f1, col_f2 = st.columns(2)
             with col_f1:
                 bloque_flash = st.selectbox("Bloque de Materia", bloques_oposition, key="f_bloque")
-                semaforo_flash = st.selectbox("Semáforo de Estado", ["🟢 Consolidado / Vivo", "🟡 En estudio / Mejorable", "🔴 Bloqueado / Alerta"], key="f_sem")
+                asistencia_flash = st.selectbox(
+                    "Control de Asistencia", 
+                    ["Asiste", "Justificado (Estudio / Test)", "Falta Injustificada"], 
+                    key="f_asis"
+                )
             with col_f2:
-                temas_semana_flash = st.text_input("Temas traídos esta semana (ej. 6-10 o 1,3,5)", key="f_temas_sem")
-                tema_escrito_flash = st.text_input("Tema escrito / insaculado en el atril", key="f_tema_esc")
+                semaforo_flash = st.selectbox("Semáforo de Estado", ["🟢 Consolidado / Vivo", "🟡 En estudio / Mejorable", "🔴 Bloqueado / Alerta"], key="f_sem")
                 
+            temas_semana_flash = st.text_input("Temas traídos esta semana (ej. 6-10 o 1,3,5)", key="f_temas_sem")
+            tema_escrito_flash = st.text_input("Tema escrito / insaculado en el atril", key="f_tema_esc")
+            
             tiempo_flash = st.slider("Tiempo empleado (minutos)", 15, 90, 60, key="f_tiempo")
             errores_flash = st.multiselect("Etiquetas de Errores", ["[E] Estructura", "[N] Normativa", "[T] Tiempo", "[S] Síntesis"], key="f_err")
             feedback_flash = st.text_area("Diagnóstico Cualitativo", key="f_feed")
@@ -221,9 +227,10 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
             if st.form_submit_button("💾 Guardar Evaluación de este Turno"):
                 nuevo_reg = pd.DataFrame({
                     "Fecha": [str(fecha_simulacro)], "Alumno": [alumno_en_puerta], "Bloque": [bloque_flash],
-                    "Temas_Para_Esta_Semana": [temas_semana_flash], "Tema_Escrito": [tema_escrito_flash],
-                    "Tiempo_Minutos": [tiempo_flash], "Estado_Semaforo": [semaforo_flash],
-                    "Errores_Frecuentes": [", ".join(errores_flash)], "Feedback_Cualitativo": [feedback_flash]
+                    "Asistencia": [asistencia_flash], "Temas_Para_Esta_Semana": [temas_semana_flash], 
+                    "Tema_Escrito": [tema_escrito_flash], "Tiempo_Minutos": [tiempo_flash], 
+                    "Estado_Semaforo": [semaforo_flash], "Errores_Frecuentes": [", ".join(errores_flash)], 
+                    "Feedback_Cualitativo": [feedback_flash]
                 })
                 df_seguimiento = pd.concat([df_seguimiento, nuevo_reg], ignore_index=True)
                 df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
@@ -235,6 +242,7 @@ elif menu == "📝 Registrar Sesión / Ficha (General)":
         with st.form("form_general"):
             al_gen = st.selectbox("Opositor", lista_alumnos, key="g_al")
             bl_gen = st.selectbox("Bloque", bloques_oposition, key="g_bl")
+            asis_gen = st.selectbox("Asistencia", ["Asiste", "Justificado (Estudio / Test)", "Falta Injustificada"], key="g_asis")
             sem_gen = st.selectbox("Estado", ["🟢 Consolidado / Vivo", "🟡 En estudio / Mejorable", "🔴 Bloqueado / Alerta"], key="g_sem")
             f_gen = st.date_input("Fecha", datetime.today(), key="g_f")
             t_sem_gen = st.text_input("Temas de la semana (ej. 1-5)", key="g_tsem")
@@ -246,9 +254,10 @@ elif menu == "📝 Registrar Sesión / Ficha (General)":
             if st.form_submit_button("Guardar"):
                 reg_gen = pd.DataFrame({
                     "Fecha": [str(f_gen)], "Alumno": [al_gen], "Bloque": [bl_gen], 
-                    "Temas_Para_Esta_Semana": [t_sem_gen], "Tema_Escrito": [t_esc_gen], 
-                    "Tiempo_Minutos": [t_min_gen], "Estado_Semaforo": [sem_gen], 
-                    "Errores_Frecuentes": [", ".join(err_gen)], "Feedback_Cualitativo": [feed_gen]
+                    "Asistencia": [asis_gen], "Temas_Para_Esta_Semana": [t_sem_gen], 
+                    "Tema_Escrito": [t_esc_gen], "Tiempo_Minutos": [t_min_gen], 
+                    "Estado_Semaforo": [sem_gen], "Errores_Frecuentes": [", ".join(err_gen)], 
+                    "Feedback_Cualitativo": [feed_gen]
                 })
                 df_seguimiento = pd.concat([df_seguimiento, reg_gen], ignore_index=True)
                 df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
@@ -259,7 +268,7 @@ elif menu == "📊 Cuadro Resumen y Progreso":
     if df_seguimiento.empty:
         st.info("Todavía no hay registros guardados.")
     else:
-        st.markdown("### 📋 Matriz General de Avance (Temas Vistos por Bloque)")
+        st.markdown("### 📋 Matriz General de Avance (Temas Vistos y Faltas Injustificadas)")
         matriz_data = []
         for alumno in lista_alumnos:
             fila = {"Opositor": alumno}
@@ -268,15 +277,30 @@ elif menu == "📊 Cuadro Resumen y Progreso":
             for bloque in bloques_oposition:
                 df_bloque = df_al[df_al["Bloque"] == bloque]
                 temas_totales_set = set()
+                faltas_injustificadas_bloque = 0
+                
                 for _, row in df_bloque.iterrows():
-                    temas_totales_set.update(parsear_temas(str(row["Temas_Para_Esta_Semana"])))
+                    asis = str(row.get("Asistencia", "Asiste"))
+                    if asis == "Falta Injustificada":
+                        faltas_injustificadas_bloque += 1
+                    elif asis == "Asiste":
+                        temas_totales_set.update(parsear_temas(str(row["Temas_Para_Esta_Semana"])))
+                    elif "Justificado" in asis:
+                        # Si está justificado por estudio/test, también puede sumar temas si los preparó
+                        temas_totales_set.update(parsear_temas(str(row["Temas_Para_Esta_Semana"])))
                 
                 lista_ordenada = sorted(list(temas_totales_set))
+                
+                detalle_str = f"({len(temas_totales_set)} temas)"
                 if lista_ordenada:
-                    temas_str = ", ".join(map(str, lista_ordenada))
-                    fila[bloque] = f"({len(temas_totales_set)} temas) [{temas_str}]"
+                    detalle_str += f" [{', '.join(map(str, lista_ordenada))}]"
+                
+                if faltas_injustificadas_bloque > 0:
+                    detalle_str += f" ❌ [Faltas inj.: {faltas_injustificadas_bloque}]"
                 else:
-                    fila[bloque] = "-"
+                    detalle_str += " ✅ [0 faltas inj.]"
+                    
+                fila[bloque] = detalle_str
             matriz_data.append(fila)
         
         st.dataframe(pd.DataFrame(matriz_data), use_container_width=True)
@@ -379,24 +403,38 @@ elif menu == "📊 Histórico, Bloques y Desviación":
         
         detalle_bloques = []
         total_temas_estudiados_alumno = 0
+        total_faltas_injustificadas_alumno = 0
+        
         for bloque in bloques_oposition:
             df_b = df_al_seg[df_al_seg["Bloque"] == bloque]
             temas_b = set()
+            faltas_inj_b = 0
+            
             for _, r in df_b.iterrows():
-                temas_b.update(parsear_temas(str(r["Temas_Para_Esta_Semana"])))
+                asis_r = str(r.get("Asistencia", "Asiste"))
+                if asis_r == "Falta Injustificada":
+                    faltas_inj_b += 1
+                elif asis_r == "Asiste":
+                    temas_b.update(parsear_temas(str(r["Temas_Para_Esta_Semana"])))
+                elif "Justificado" in asis_r:
+                    temas_b.update(parsear_temas(str(r["Temas_Para_Esta_Semana"])))
+            
             lista_t = sorted(list(temas_b))
             num_t = len(temas_b)
             total_temas_estudiados_alumno += num_t
+            total_faltas_injustificadas_alumno += faltas_inj_b
             
             detalle_bloques.append({
                 "Bloque": bloque,
                 "Total Temas Vistos": num_t,
+                "Faltas Injustificadas": faltas_inj_b,
                 "Temas Concretos Estudiados": ", ".join(map(str, lista_t)) if lista_t else "Ninguno"
             })
+            
         st.dataframe(pd.DataFrame(detalle_bloques), use_container_width=True)
         
         st.markdown("---")
-        st.markdown("### ⏱️ Control de Desviación con el Calendario Teórico")
+        st.markdown("### ⏱️ Control de Desviación con el Calendario Teórico y Asistencia")
         TEMAS_TEORICOS_SEMANA_MEDIA = 5 
         semanas_registradas = max(len(df_al_seg), 1)
         temas_esperados_teoricos = semanas_registradas * TEMAS_TEORICOS_SEMANA_MEDIA
@@ -404,13 +442,14 @@ elif menu == "📊 Histórico, Bloques y Desviación":
         diferencia_temas = temas_esperados_teoricos - total_temas_estudiados_alumno
         semanas_retraso = round(diferencia_temas / TEMAS_TEORICOS_SEMANA_MEDIA, 1)
         
-        col_d1, col_d2, col_d3 = st.columns(3)
+        col_d1, col_d2, col_d3, col_d4 = st.columns(4)
         col_d1.metric("Temas Acumulados Vistos", total_temas_estudiados_alumno)
-        col_d2.metric("Temas Teóricos Esperados", temas_esperados_teoricos)
+        col_d2.metric("Faltas Injustificadas Totales", total_faltas_injustificadas_alumno)
         if semanas_retraso > 0:
-            col_d3.metric("Desviación Estimada", f"+{semanas_retraso} semanas de retraso", delta_color="inverse")
+            col_d3.metric("Desviación Estimada", f"+{semanas_retraso} sem. retraso", delta_color="inverse")
         else:
-            col_d3.metric("Desviación Estimada", "Al día o adelantado", delta_color="normal")
+            col_d3.metric("Desviación Estimada", "Al día", delta_color="normal")
+        col_d4.metric("Sesiones Registradas", len(df_al_seg))
 
         st.markdown("---")
         st.markdown("### 📋 Registro Histórico Detallado")
