@@ -39,6 +39,17 @@ FRANJAS_HORARIAS_POSIBLES = [
     "21:00", "21:15", "21:30"
 ]
 
+OPCIONES_ERRORES = [
+    "[E] Estructura", 
+    "[N] Normativa", 
+    "[T] Tiempo", 
+    "[S] Síntesis",
+    "[L] Claridad de Lectura",
+    "[R] Relleno / Discurso",
+    "[V] Visión Sistémica",
+    "[M] Ritmo y Expresión"
+]
+
 def cargar_alumnos():
     if os.path.exists(DB_ALUMNOS):
         df = pd.read_csv(DB_ALUMNOS)
@@ -233,7 +244,7 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
             tema_escrito_flash = st.text_input("Tema escrito / insaculado en el atril", key="f_tema_esc")
             
             tiempo_flash = st.slider("Tiempo empleado (minutos)", 15, 90, 60, key="f_tiempo")
-            errores_flash = st.multiselect("Etiquetas de Errores", ["[E] Estructura", "[N] Normativa", "[T] Tiempo", "[S] Síntesis"], key="f_err")
+            errores_flash = st.multiselect("Etiquetas de Errores", OPCIONES_ERRORES, key="f_err")
             feedback_flash = st.text_area("Diagnóstico Cualitativo", key="f_feed")
             
             if st.form_submit_button("💾 Guardar Evaluación de este Turno"):
