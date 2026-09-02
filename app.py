@@ -34,8 +34,6 @@ def cargar_alumnos():
         df = pd.read_csv(DB_ALUMNOS)
         if "Asiste_Por_Defecto" not in df.columns:
             df["Asiste_Por_Defecto"] = True
-        if "Tipo_Prueba_Defecto" not in df.columns:
-            df["Tipo_Prueba_Defecto"] = "Simulacro Oral"
         if "Franja_Defecto" not in df.columns:
             df["Franja_Defecto"] = "Sin preferencia (Cualquier hora)"
             
@@ -50,7 +48,6 @@ def cargar_alumnos():
             "Correo": ["" for _ in ALUMNOS_INICIALES],
             "Circunstancias": ["" for _ in ALUMNOS_INICIALES],
             "Asiste_Por_Defecto": [True for _ in ALUMNOS_INICIALES],
-            "Tipo_Prueba_Defecto": ["Simulacro Oral" for _ in ALUMNOS_INICIALES],
             "Franja_Defecto": ["Sin preferencia (Cualquier hora)" for _ in ALUMNOS_INICIALES]
         })
         df.to_csv(DB_ALUMNOS, index=False)
@@ -115,7 +112,7 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
     
     st.markdown("---")
     st.markdown("### 🛠️ Paso 1: Configuración Previa y Asistencia de la Sesión")
-    st.info("Indica para cada alumno su asistencia, tipo de prueba y franja horaria preferida en esta convocatoria.")
+    st.info("Indica para cada alumno su asistencia, franja horaria preferida y bloque de materia para esta convocatoria.")
     
     opciones_franja = [
         "Sin preferencia (Cualquier hora)", 
@@ -123,7 +120,6 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
         "A partir de las 18:00 (Tarde tardía)",
         "Primer turno absoluto (16:00)"
     ]
-    opciones_tipo = ["Simulacro Oral", "Test"]
 
     with st.form("form_configuracion_sesion"):
         configuracion_alumnos = {}
@@ -132,23 +128,19 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
             row_al = df_alumnos_db[df_alumnos_db["Alumno"] == alumno].iloc[0]
             def_asiste = bool(row_al["Asiste_Por_Defecto"])
             estado_asis_inicial = "Asiste" if def_asiste else "Falta Injustificada"
-            def_tipo = row_al["Tipo_Prueba_Defecto"] if row_al["Tipo_Prueba_Defecto"] in opciones_tipo else "Simulacro Oral"
             def_franja = row_al["Franja_Defecto"] if row_al["Franja_Defecto"] in opciones_franja else opciones_franja[0]
             
             with st.expander(f"👤 {alumno}"):
-                col_c1, col_c2, col_c3, col_c4 = st.columns([1.5, 1, 1, 2])
+                col_c1, col_c2, col_c3 = st.columns([1.5, 1.5, 2])
                 with col_c1:
                     estado_asis = st.selectbox("Asistencia", opciones_asistencia, index=opciones_asistencia.index(estado_asis_inicial), key=f"asis_{alumno}")
                 with col_c2:
-                    tipo_prueba = st.selectbox("Prueba", opciones_tipo, index=opciones_tipo.index(def_tipo), key=f"tipo_{alumno}")
-                with col_c3:
                     franja = st.selectbox("Franja horaria", opciones_franja, index=opciones_franja.index(def_franja), key=f"franja_{alumno}")
-                with col_c4:
+                with col_c3:
                     bloque_rapido = st.selectbox("Bloque habitual", bloques_oposition, key=f"bl_rap_{alumno}")
                 
                 configuracion_alumnos[alumno] = {
                     "asistencia": estado_asis,
-                    "tipo": tipo_prueba,
                     "franja": franja,
                     "bloque": bloque_rapido
                 }
@@ -161,7 +153,6 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
                 if actualizar_permanentes:
                     es_asiste_bool = True if cfg["asistencia"] == "Asiste" else False
                     df_alumnos_db.loc[df_alumnos_db["Alumno"] == al, "Asiste_Por_Defecto"] = es_asiste_bool
-                    df_alumnos_db.loc[df_alumnos_db["Alumno"] == al, "Tipo_Prueba_Defecto"] = cfg["tipo"]
                     df_alumnos_db.loc[df_alumnos_db["Alumno"] == al, "Franja_Defecto"] = cfg["franja"]
             if actualizar_permanentes:
                 guardar_alumnos(df_alumnos_db)
@@ -210,7 +201,7 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
                     def_al = alumnos_ordenados[idx] if idx < len(alumnos_ordenados) else alumnos_asistentes[0]
                     st.selectbox(f"Opositor a las {hora}", alumnos_asistentes, index=alumnos_asistentes.index(def_al), key=f"parrilla_al_{idx}")
                 with col_t:
-                    st.markdown(f"**Tipo:** `{configuracion_alumnos[def_al]['tipo']}`")
+                    st.markdown(f"**Prueba:** `Lectura Tema Escrito`")
                 
             if st.form_submit_button("💾 Guardar Parrilla Definitiva"):
                 st.success("¡Parrilla de la tarde fijada correctamente!")
@@ -283,13 +274,14 @@ elif menu == "📊 Cuadro Resumen y Progreso":
     if df_seguimiento.empty:
         st.info("Todavía no hay registros guardados.")
     else:
-        st.markdown("### 📋 Matriz General de Avance (Temas Vistos y Faltas Injustificadas Totales)")
+        st.markdown("### 📋 Matriz General de Avance (Ordenada de Mejor a Peor Progreso)")
         matriz_data = []
         for alumno in lista_alumnos:
             fila = {"Opositor": alumno}
             df_al = df_seguimiento[df_seguimiento["Alumno"] == alumno]
             
             total_faltas_inj_alumno = 0
+            total_temas_alumno = 0
             
             for bloque in bloques_oposition:
                 df_bloque = df_al[df_al["Bloque"] == bloque]
@@ -302,17 +294,29 @@ elif menu == "📊 Cuadro Resumen y Progreso":
                     else:
                         temas_totales_set.update(parsear_temas(str(row["Temas_Para_Esta_Semana"])))
                 
+                num_temas_bloque = len(temas_totales_set)
+                total_temas_alumno += num_temas_bloque
+                
                 lista_ordenada = sorted(list(temas_totales_set))
-                detalle_str = f"({len(temas_totales_set)} temas)"
+                detalle_str = f"({num_temas_bloque} temas)"
                 if lista_ordenada:
                     detalle_str += f" [{', '.join(map(str, lista_ordenada))}]"
                 
                 fila[bloque] = detalle_str
                 
             fila["❌ Faltas Injustificadas"] = total_faltas_inj_alumno
+            
+            # Puntuación de ordenación: Temas totales menos penalización fuerte por falta injustificada (5 puntos por falta)
+            score_progreso = total_temas_alumno - (total_faltas_inj_alumno * 5)
+            fila["_score"] = score_progreso
+            
             matriz_data.append(fila)
         
-        st.dataframe(pd.DataFrame(matriz_data), use_container_width=True)
+        df_matriz = pd.DataFrame(matriz_data)
+        # Ordenar de mejor a peor según la puntuación calculada
+        df_matriz = df_matriz.sort_values(by="_score", ascending=False).drop(columns=["_score"]).reset_index(drop=True)
+        
+        st.dataframe(df_matriz, use_container_width=True)
 
 elif menu == "📅 Control y Edición de Sesiones":
     st.subheader("📅 Control, Modificación y Eliminación de Sesiones")
@@ -353,7 +357,6 @@ elif menu == "📅 Control y Edición de Sesiones":
                         btn_borrar_sesion = st.form_submit_button("🗑️ Eliminar esta Sesión")
                         
                     if btn_guardar_cambios:
-                        # Buscar el índice real en el df_seguimiento original
                         orig_idx = df_seguimiento[(df_seguimiento['Fecha'] == row['Fecha']) & 
                                                   (df_seguimiento['Alumno'] == row['Alumno']) & 
                                                   (df_seguimiento['Bloque'] == row['Bloque'])].index
@@ -396,7 +399,6 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
         "A partir de las 18:00 (Tarde tardía)",
         "Primer turno absoluto (16:00)"
     ]
-    opciones_tipo = ["Simulacro Oral", "Test"]
 
     if sub_opcion == "Editar Perfil Existente" and lista_alumnos:
         alumno_editar = st.selectbox("Selecciona opositor", lista_alumnos)
@@ -410,11 +412,9 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
             
             st.markdown("#### ⚙️ Preferencias Permanentes de Simulacro")
             val_asiste_def = bool(datos_actuales["Asiste_Por_Defecto"])
-            val_tipo_def = datos_actuales["Tipo_Prueba_Defecto"] if datos_actuales["Tipo_Prueba_Defecto"] in opciones_tipo else "Simulacro Oral"
             val_franja_def = datos_actuales["Franja_Defecto"] if datos_actuales["Franja_Defecto"] in opciones_franja else opciones_franja[0]
             
             nuevo_asiste_def = st.checkbox("Asiste por defecto cada semana", value=val_asiste_def)
-            nuevo_tipo_def = st.selectbox("Tipo de prueba habitual", opciones_tipo, index=opciones_tipo.index(val_tipo_def))
             nueva_franja_def = st.selectbox("Franja horaria preferida por defecto", opciones_franja, index=opciones_franja.index(val_franja_def))
             
             if st.form_submit_button("Guardar Cambios"):
@@ -423,7 +423,6 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
                 df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Correo"] = nuevo_correo_val
                 df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Circunstancias"] = nuevas_circ
                 df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Asiste_Por_Defecto"] = nuevo_asiste_def
-                df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Tipo_Prueba_Defecto"] = nuevo_tipo_def
                 df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Franja_Defecto"] = nueva_franja_def
                 
                 guardar_alumnos(df_alumnos_db)
@@ -442,14 +441,13 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
             
             st.markdown("#### ⚙️ Preferencias Permanentes de Simulacro")
             n_asiste_def = st.checkbox("Asiste por defecto cada semana", value=True)
-            n_tipo_def = st.selectbox("Tipo de prueba habitual", opciones_tipo)
             n_franja_def = st.selectbox("Franja horaria preferida por defecto", opciones_franja)
             
             if st.form_submit_button("Crear Opositor"):
                 if n_nombre and n_nombre not in lista_alumnos:
                     nuevo_fila = pd.DataFrame({
                         "Alumno": [n_nombre], "Telefono": [n_tel], "Correo": [n_correo], "Circunstancias": [n_circ],
-                        "Asiste_Por_Defecto": [n_asiste_def], "Tipo_Prueba_Defecto": [n_tipo_def], "Franja_Defecto": [n_franja_def]
+                        "Asiste_Por_Defecto": [n_asiste_def], "Franja_Defecto": [n_franja_def]
                     })
                     df_alumnos_db = pd.concat([df_alumnos_db, nuevo_fila], ignore_index=True)
                     guardar_alumnos(df_alumnos_db)
