@@ -8,7 +8,6 @@ st.set_page_config(page_title="Control Oposición Intendencia", layout="wide")
 DB_ALUMNOS = "alumnos_intendencia.csv"
 DB_SEGUIMIENTO = "seguimiento_opositores.csv"
 
-# Lista inicial por defecto si no existe archivo de alumnos
 ALUMNOS_INICIALES = [
     "Estrella Alcoba", "Carmen Andrés Albaladejo", "Carlos Báez Gutiérrez", 
     "Alberto Bravo", "Javier Carreras", "Cristian Carrillo", "Fernando Casanova", 
@@ -19,15 +18,16 @@ ALUMNOS_INICIALES = [
     "Adrián Valenzuela", "Erik Arnold Van Lieshout", "Daniel Varas del Peso"
 ]
 
+# Bloques corregidos con Constitucional independiente
 bloques_oposition = [
-    "Hacienda Pública (14)", 
-    "Constitucional / Administrativo (41)", 
-    "Derecho Financiero y Sistema Fiscal (20)", 
-    "Economía (12)", 
-    "Contabilidad (15)"
+    "Hacienda Pública", 
+    "Constitucional", 
+    "Derecho Administrativo", 
+    "Derecho Financiero y Sistema Fiscal", 
+    "Economía", 
+    "Contabilidad"
 ]
 
-# Funciones de carga de datos
 def cargar_alumnos():
     if os.path.exists(DB_ALUMNOS):
         df = pd.read_csv(DB_ALUMNOS)
@@ -47,7 +47,8 @@ def cargar_seguimiento():
     else:
         df_inicial = pd.DataFrame(columns=[
             "Fecha", "Alumno", "Bloque", "Temas_Para_Esta_Semana", 
-            "Tema_Escrito", "Tiempo_Minutos", "Feedback_Cualitativo"
+            "Tema_Escrito", "Tiempo_Minutos", "Estado_Semaforo", 
+            "Errores_Frecuentes", "Feedback_Cualitativo"
         ])
         df_inicial.to_csv(DB_SEGUIMIENTO, index=False)
         return df_inicial
@@ -55,35 +56,42 @@ def cargar_seguimiento():
 lista_alumnos = cargar_alumnos()
 df_seguimiento = cargar_seguimiento()
 
-# Menú lateral
 st.sidebar.title("📌 Menú de Control")
 menu = st.sidebar.selectbox("Selecciona una opción", [
     "📝 Registrar Sesión / Ficha Semanal", 
     "📊 Cuadro Resumen y Progreso", 
-    "👥 Gestión de Opositores (Añadir / Borrar)",
-    "📊 Histórico por Alumno"
+    "👥 Gestión de Opositores",
+    "📊 Histórico y Exportación por Alumno"
 ])
 
 if menu == "📝 Registrar Sesión / Ficha Semanal":
     st.subheader("📝 Ficha de Seguimiento y Control Semanal")
     
     if not lista_alumnos:
-        st.warning("No hay alumnos registrados. Añade opositores en la pestaña del menú lateral.")
+        st.warning("No hay alumnos registrados.")
     else:
         with st.form("form_lectura"):
             col1, col2 = st.columns(2)
             with col1:
                 alumno_sel = st.selectbox("Opositor", lista_alumnos)
                 bloque_sel = st.selectbox("Bloque de Materia", bloques_oposition)
+                estado_semaforo = st.selectbox("Semáforo de Estado", ["🟢 Consolidado / Vivo", "🟡 En estudio / Mejorable", "🔴 Bloqueado / Alerta"])
             with col2:
                 fecha_sel = st.date_input("Fecha de Sesión", datetime.today())
                 temas_semana = st.text_input("Temas que lleva para esta semana (Ej: Temas 5 al 9)")
+                tema_escrito = st.text_input("Tema escrito / Insaculado en clase (Opcional)")
                 
-            tema_escrito = st.text_input("Tema escrito / Insaculado en clase (Opcional)")
             tiempo_redaccion = st.slider("Tiempo empleado en exposición/redacción (minutos)", 30, 90, 60)
             
+            errores = st.multiselect("Etiquetas de Errores Recurrentes detectados", [
+                "[E] Fallo de Estructura / Índice", 
+                "[N] Error Normativo / Plazos", 
+                "[T] Problemas de Gestión del Tiempo", 
+                "[S] Falta de Síntesis"
+            ])
+            
             feedback = st.text_area(
-                "Diagnóstico Cualitativo (Estructura, tiempo, lagunas normativas, claridad...)", 
+                "Diagnóstico Cualitativo", 
                 placeholder="Ej: Buena estructura inicial, pero se extendió demasiado en el epígrafe 2..."
             )
             
@@ -97,6 +105,8 @@ if menu == "📝 Registrar Sesión / Ficha Semanal":
                     "Temas_Para_Esta_Semana": [temas_semana],
                     "Tema_Escrito": [tema_escrito],
                     "Tiempo_Minutos": [tiempo_redaccion],
+                    "Estado_Semaforo": [estado_semaforo],
+                    "Errores_Frecuentes": [", ".join(errores)],
                     "Feedback_Cualitativo": [feedback]
                 })
                 
@@ -108,48 +118,45 @@ elif menu == "📊 Cuadro Resumen y Progreso":
     st.subheader("📊 Cuadro Resumen General de Progreso")
     
     if df_seguimiento.empty:
-        st.info("Todavía no hay registros guardados para mostrar el resumen.")
+        st.info("Todavía no hay registros guardados.")
     else:
         col_m1, col_m2 = st.columns(2)
         with col_m1:
-            st.metric("Total de Sesiones / Ensayos Registrados", len(df_seguimiento))
+            st.metric("Total de Sesiones Registradas", len(df_seguimiento))
         with col_m2:
             st.metric("Opositores con Actividad", df_seguimiento["Alumno"].nunique())
         
-        st.markdown("### 📈 Progreso Total por Alumno (Nº de revisiones/temas tocados)")
-        resumen_alumnos = df_seguimiento.groupby("Alumno").size().reset_index(name="Temas / Revisiones Totales")
-        resumen_alumnos = resumen_alumnos.sort_values(by="Temas / Revisiones Totales", ascending=False)
+        st.markdown("### 📈 Actividad Total por Alumno")
+        resumen_alumnos = df_seguimiento.groupby("Alumno").size().reset_index(name="Revisiones Totales")
         st.dataframe(resumen_alumnos, use_container_width=True)
         
         st.markdown("### 🧱 Cobertura por Bloques de Materia")
         resumen_bloques = df_seguimiento.groupby("Bloque").size().reset_index(name="Veces Practicado")
         st.dataframe(resumen_bloques, use_container_width=True)
 
-elif menu == "👥 Gestión de Opositores (Añadir / Borrar)":
+elif menu == "👥 Gestión de Opositores":
     st.subheader("👥 Administrar Lista de Alumnos")
     
-    st.markdown("### ➕ Añadir Nuevo Opositor")
-    nuevo_nombre = st.text_input("Nombre y Apellidos del Opositor")
+    nuevo_nombre = st.text_input("Nombre y Apellidos del Nuevo Opositor")
     if st.button("Añadir Opositor"):
         if nuevo_nombre and nuevo_nombre not in lista_alumnos:
             lista_alumnos.append(nuevo_nombre)
             guardar_lista_alumnos(lista_alumnos)
-            st.success(f"¡{nuevo_nombre} añadido correctamente! Recarga la página si es necesario.")
+            st.success(f"¡{nuevo_nombre} añadido correctamente!")
         else:
-            st.error("El nombre está vacío o ya existe en la lista.")
+            st.error("El nombre está vacío o ya existe.")
             
     st.markdown("---")
-    st.markdown("### ❌ Eliminar o Modificar Opositor")
     alumno_a_borrar = st.selectbox("Selecciona opositor a eliminar", lista_alumnos)
     if st.button("Eliminar Opositor Seleccionado"):
         if alumno_a_borrar in lista_alumnos:
             lista_alumnos.remove(alumno_a_borrar)
             guardar_lista_alumnos(lista_alumnos)
-            st.success(f"Se ha eliminado a {alumno_a_borrar} de la lista.")
+            st.success(f"Se ha eliminado a {alumno_a_borrar}.")
             st.rerun()
 
-elif menu == "📊 Histórico por Alumno":
-    st.subheader("📊 Histórico y Evolución Individual")
+elif menu == "📊 Histórico y Exportación por Alumno":
+    st.subheader("📊 Histórico Individual y Exportación")
     
     if not lista_alumnos:
         st.info("No hay alumnos.")
@@ -159,6 +166,15 @@ elif menu == "📊 Histórico por Alumno":
         
         if not df_alumno.empty:
             st.metric(label="Total de registros del alumno", value=len(df_alumno))
-            st.dataframe(df_alumno[["Fecha", "Bloque", "Temas_Para_Esta_Semana", "Tema_Escrito", "Tiempo_Minutos", "Feedback_Cualitativo"]], use_container_width=True)
+            st.dataframe(df_alumno, use_container_width=True)
+            
+            # Botón para descargar a CSV/Excel
+            csv_data = df_alumno.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Descargar Histórico del Alumno (CSV)",
+                data=csv_data,
+                file_name=f"historial_{alumno_filtro.replace(' ', '_')}.csv",
+                mime="text/csv"
+            )
         else:
             st.info("Aún no hay registros guardados para este opositor.")
