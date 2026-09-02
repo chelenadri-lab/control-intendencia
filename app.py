@@ -29,14 +29,14 @@ bloques_oposition = [
 
 opciones_asistencia = ["Asiste", "Justificado (Estudio / Test)", "Falta Injustificada"]
 
-# Franjas de 15 minutos de la tarde ampliadas hasta las 21:00
+# Franjas de 15 minutos de la tarde ampliadas hasta las 21:30
 FRANJAS_HORARIAS_POSIBLES = [
     "16:00", "16:15", "16:30", "16:45",
     "17:00", "17:15", "17:30", "17:45",
     "18:00", "18:15", "18:30", "18:45",
     "19:00", "19:15", "19:30", "19:45",
     "20:00", "20:15", "20:30", "20:45",
-    "21:00"
+    "21:00", "21:15", "21:30"
 ]
 
 def cargar_alumnos():
@@ -109,7 +109,6 @@ df_seguimiento = cargar_seguimiento()
 st.sidebar.title("📌 Menú de Control")
 menu = st.sidebar.selectbox("Selecciona una opción", [
     "🕒 Turnos de Simulacro (En Vivo)",
-    "📝 Registrar Sesión / Ficha (General)", 
     "📊 Cuadro Resumen y Progreso", 
     "📅 Control y Edición de Sesiones",
     "👥 Gestión de Opositores y Perfiles",
@@ -248,33 +247,6 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
                 df_seguimiento = pd.concat([df_seguimiento, nuevo_reg], ignore_index=True)
                 df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
                 st.success(f"¡Evaluación de {alumno_en_puerta} guardada con éxito!")
-
-elif menu == "📝 Registrar Sesión / Ficha (General)":
-    st.subheader("📝 Ficha General de Seguimiento")
-    if lista_alumnos:
-        with st.form("form_general"):
-            al_gen = st.selectbox("Opositor", lista_alumnos, key="g_al")
-            bl_gen = st.selectbox("Bloque", bloques_oposition, key="g_bl")
-            asis_gen = st.selectbox("Asistencia", opciones_asistencia, key="g_asis")
-            sem_gen = st.selectbox("Estado", ["🟢 Consolidado / Vivo", "🟡 En estudio / Mejorable", "🔴 Bloqueado / Alerta"], key="g_sem")
-            f_gen = st.date_input("Fecha", datetime.today(), key="g_f")
-            t_sem_gen = st.text_input("Temas de la semana (ej. 1-5)", key="g_tsem")
-            t_esc_gen = st.text_input("Tema escrito", key="g_tesc")
-            t_min_gen = st.slider("Minutos", 30, 90, 60, key="g_tmin")
-            err_gen = st.multiselect("Errores", ["[E] Estructura", "[N] Normativa", "[T] Tiempo", "[S] Síntesis"], key="g_err")
-            feed_gen = st.text_area("Feedback", key="g_feed")
-            
-            if st.form_submit_button("Guardar"):
-                reg_gen = pd.DataFrame({
-                    "Fecha": [str(f_gen)], "Alumno": [al_gen], "Bloque": [bl_gen], 
-                    "Asistencia": [asis_gen], "Temas_Para_Esta_Semana": [t_sem_gen], 
-                    "Tema_Escrito": [t_esc_gen], "Tiempo_Minutos": [t_min_gen], 
-                    "Estado_Semaforo": [sem_gen], "Errores_Frecuentes": [", ".join(err_gen)], 
-                    "Feedback_Cualitativo": [feed_gen]
-                })
-                df_seguimiento = pd.concat([df_seguimiento, reg_gen], ignore_index=True)
-                df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
-                st.success("Guardado correctamente.")
 
 elif menu == "📊 Cuadro Resumen y Progreso":
     st.subheader("📊 Cuadro Resumen Global por Opositor")
