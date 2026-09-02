@@ -173,34 +173,35 @@ elif menu == "📝 Registrar Sesión / Ficha (General)":
                 st.success("Guardado correctamente.")
 
 elif menu == "📊 Cuadro Resumen y Progreso":
-    st.subheader("📊 Cuadro Resumen General de Progreso y Bloques")
+    st.subheader("📊 Cuadro Resumen Global por Opositor y Bloques")
     if df_seguimiento.empty:
         st.info("Todavía no hay registros guardados.")
     else:
-        st.markdown("### 🧱 Cobertura y Temas Vistos por Alumno y Bloque")
-        # Procesar los temas vistos por bloque para cada alumno
-        resumen_data = []
+        st.markdown("### 📋 Matriz General de Avance (Temas Vistos por Bloque)")
+        
+        # Construir la tabla con una fila por opositor y los bloques como columnas
+        matriz_data = []
         for alumno in lista_alumnos:
+            fila = {"Opositor": alumno}
             df_al = df_seguimiento[df_seguimiento["Alumno"] == alumno]
+            
             for bloque in bloques_oposition:
                 df_bloque = df_al[df_al["Bloque"] == bloque]
                 temas_totales_set = set()
                 for _, row in df_bloque.iterrows():
                     temas_totales_set.update(parsear_temas(str(row["Temas_Para_Esta_Semana"])))
                 
-                # Formatear la lista de temas vistos de forma ordenada
                 lista_ordenada = sorted(list(temas_totales_set))
-                temas_str = ", ".join(map(str, lista_ordenada)) if lista_ordenada else "Ninguno"
-                
-                resumen_data.append({
-                    "Alumno": alumno,
-                    "Bloque": bloque,
-                    "Nº Temas Vistos": len(temas_totales_set),
-                    "Temas Abordados": temas_str
-                })
+                if lista_ordenada:
+                    temas_str = ", ".join(map(str, lista_ordenada))
+                    fila[bloque] = f"({len(temas_totales_set)} temas) [{temas_str}]"
+                else:
+                    fila[bloque] = "-"
+            
+            matriz_data.append(fila)
         
-        df_resumen_bloques = pd.DataFrame(resumen_data)
-        st.dataframe(df_resumen_bloques, use_container_width=True)
+        df_matriz = pd.DataFrame(matriz_data)
+        st.dataframe(df_matriz, use_container_width=True)
 
 elif menu == "👥 Gestión de Opositores y Perfiles":
     st.subheader("👥 Gestión de Alumnos y Perfiles")
@@ -262,31 +263,30 @@ elif menu == "📊 Histórico, Bloques y Desviación":
             st.info(f"📞 Teléfono: {p['Telefono']} | ✉️ Correo: {p['Correo']} | 📝 Circunstancias: {p['Circunstancias']}")
         
         st.markdown("---")
-        st.markdown("### 🧱 Detalle por Bloque de este Alunmno")
+        st.markdown("### 🧱 Detalle por Bloque de este Opositor")
         df_al_seg = df_seguimiento[df_seguimiento["Alumno"] == alumno_filtro]
         
         detalle_bloques = []
+        total_temas_estudiados_alumno = 0
         for bloque in bloques_oposition:
             df_b = df_al_seg[df_al_seg["Bloque"] == bloque]
             temas_b = set()
             for _, r in df_b.iterrows():
                 temas_b.update(parsear_temas(str(r["Temas_Para_Esta_Semana"])))
             lista_t = sorted(list(temas_b))
+            num_t = len(temas_b)
+            total_temas_estudiados_alumno += num_t
+            
             detalle_bloques.append({
                 "Bloque": bloque,
-                "Total Temas Vistos": len(temas_b),
+                "Total Temas Vistos": num_t,
                 "Temas Concretos Estudiados": ", ".join(map(str, lista_t)) if lista_t else "Ninguno"
             })
         st.dataframe(pd.DataFrame(detalle_bloques), use_container_width=True)
         
         st.markdown("---")
         st.markdown("### ⏱️ Control de Desviación con el Calendario Teórico")
-        # Cálculo orientativo de semanas de retraso estimado comparado con el avance real
-        total_temas_estudiados_alumno = sum(d["Total Temas Vistos"] for d in detalle_bloques)
-        
-        # Suposición estándar de ritmo teórico (ej. 5 temas por semana de media en la planificación)
         TEMAS_TEORICOS_SEMANA_MEDIA = 5 
-        # Semanas transcurridas desde el inicio estimado o número de sesiones registradas como referencia
         semanas_registradas = max(len(df_al_seg), 1)
         temas_esperados_teoricos = semanas_registradas * TEMAS_TEORICOS_SEMANA_MEDIA
         
