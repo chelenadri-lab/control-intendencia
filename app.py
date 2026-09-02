@@ -27,6 +27,8 @@ bloques_oposition = [
     "Contabilidad"
 ]
 
+opciones_asistencia = ["Asiste", "Justificado (Estudio / Test)", "Falta Injustificada"]
+
 def cargar_alumnos():
     if os.path.exists(DB_ALUMNOS):
         df = pd.read_csv(DB_ALUMNOS)
@@ -102,6 +104,7 @@ menu = st.sidebar.selectbox("Selecciona una opción", [
     "🕒 Turnos de Simulacro (En Vivo)",
     "📝 Registrar Sesión / Ficha (General)", 
     "📊 Cuadro Resumen y Progreso", 
+    "📅 Control y Edición de Sesiones",
     "👥 Gestión de Opositores y Perfiles",
     "📊 Histórico, Bloques y Desviación"
 ])
@@ -111,8 +114,8 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
     fecha_simulacro = st.date_input("Fecha de la sesión de simulacros", datetime.today())
     
     st.markdown("---")
-    st.markdown("### 🛠️ Paso 1: Configuración Previa de la Sesión")
-    st.info("Los valores se cargan automáticamente según las preferencias permanentes de cada alumno. Puedes ajustarlos puntualmente para esta sesión si hay cambios y opcionalmente actualizar su perfil fijo.")
+    st.markdown("### 🛠️ Paso 1: Configuración Previa y Asistencia de la Sesión")
+    st.info("Indica para cada alumno su asistencia, tipo de prueba y franja horaria preferida en esta convocatoria.")
     
     opciones_franja = [
         "Sin preferencia (Cualquier hora)", 
@@ -128,42 +131,61 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
         for alumno in lista_alumnos:
             row_al = df_alumnos_db[df_alumnos_db["Alumno"] == alumno].iloc[0]
             def_asiste = bool(row_al["Asiste_Por_Defecto"])
+            estado_asis_inicial = "Asiste" if def_asiste else "Falta Injustificada"
             def_tipo = row_al["Tipo_Prueba_Defecto"] if row_al["Tipo_Prueba_Defecto"] in opciones_tipo else "Simulacro Oral"
             def_franja = row_al["Franja_Defecto"] if row_al["Franja_Defecto"] in opciones_franja else opciones_franja[0]
             
             with st.expander(f"👤 {alumno}"):
-                col_c1, col_c2, col_c3 = st.columns([1, 1, 2])
+                col_c1, col_c2, col_c3, col_c4 = st.columns([1.5, 1, 1, 2])
                 with col_c1:
-                    asiste = st.checkbox("Asiste esta semana", value=def_asiste, key=f"asiste_{alumno}")
+                    estado_asis = st.selectbox("Asistencia", opciones_asistencia, index=opciones_asistencia.index(estado_asis_inicial), key=f"asis_{alumno}")
                 with col_c2:
-                    tipo_prueba = st.selectbox("Tipo de prueba", opciones_tipo, index=opciones_tipo.index(def_tipo), key=f"tipo_{alumno}")
+                    tipo_prueba = st.selectbox("Prueba", opciones_tipo, index=opciones_tipo.index(def_tipo), key=f"tipo_{alumno}")
                 with col_c3:
-                    franja = st.selectbox("Franja horaria habitual / preferida", opciones_franja, index=opciones_franja.index(def_franja), key=f"franja_{alumno}")
+                    franja = st.selectbox("Franja horaria", opciones_franja, index=opciones_franja.index(def_franja), key=f"franja_{alumno}")
+                with col_c4:
+                    bloque_rapido = st.selectbox("Bloque habitual", bloques_oposition, key=f"bl_rap_{alumno}")
                 
                 configuracion_alumnos[alumno] = {
-                    "asiste": asiste,
+                    "asistencia": estado_asis,
                     "tipo": tipo_prueba,
-                    "franja": franja
+                    "franja": franja,
+                    "bloque": bloque_rapido
                 }
         
         actualizar_permanentes = st.checkbox("💾 Actualizar también las preferencias permanentes en los perfiles de los alumnos con estos cambios", value=False)
         btn_generar_parrilla = st.form_submit_button("⚙️ Generar y Bloquear Parrilla de Turnos Automática")
 
-        if btn_generar_parrilla and actualizar_permanentes:
+        if btn_generar_parrilla:
             for al, cfg in configuracion_alumnos.items():
-                df_alumnos_db.loc[df_alumnos_db["Alumno"] == al, "Asiste_Por_Defecto"] = cfg["asiste"]
-                df_alumnos_db.loc[df_alumnos_db["Alumno"] == al, "Tipo_Prueba_Defecto"] = cfg["tipo"]
-                df_alumnos_db.loc[df_alumnos_db["Alumno"] == al, "Franja_Defecto"] = cfg["franja"]
-            guardar_alumnos(df_alumnos_db)
-            st.toast("¡Preferencias permanentes actualizadas en los perfiles!", icon="✅")
+                if actualizar_permanentes:
+                    es_asiste_bool = True if cfg["asistencia"] == "Asiste" else False
+                    df_alumnos_db.loc[df_alumnos_db["Alumno"] == al, "Asiste_Por_Defecto"] = es_asiste_bool
+                    df_alumnos_db.loc[df_alumnos_db["Alumno"] == al, "Tipo_Prueba_Defecto"] = cfg["tipo"]
+                    df_alumnos_db.loc[df_alumnos_db["Alumno"] == al, "Franja_Defecto"] = cfg["franja"]
+            if actualizar_permanentes:
+                guardar_alumnos(df_alumnos_db)
+            
+            # Registrar automáticamente las asistencias / no asistencias en el seguimiento
+            for al, cfg in configuracion_alumnos.items():
+                nuevo_reg = pd.DataFrame({
+                    "Fecha": [str(fecha_simulacro)], "Alumno": [al], "Bloque": [cfg["bloque"]],
+                    "Asistencia": [cfg["asistencia"]], "Temas_Para_Esta_Semana": [""], 
+                    "Tema_Escrito": [""], "Tiempo_Minutos": [0], 
+                    "Estado_Semaforo": ["🟢 Consolidado / Vivo"], "Errores_Frecuentes": [""], 
+                    "Feedback_Cualitativo": ["Generado automáticamente desde planificación."]
+                })
+                df_seguimiento = pd.concat([df_seguimiento, nuevo_reg], ignore_index=True)
+            df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
+            st.toast("¡Parrilla generada y registros de asistencia guardados!", icon="✅")
 
     st.markdown("---")
     st.markdown("### ⏰ Paso 2: Parrilla de Entradas (Cada 15 min desde las 16:00)")
     
-    alumnos_asistentes = [al for al, cfg in configuracion_alumnos.items() if cfg["asiste"]]
+    alumnos_asistentes = [al for al, cfg in configuracion_alumnos.items() if cfg["asistencia"] == "Asiste"]
     
     if not alumnos_asistentes:
-        st.warning("No hay alumnos marcados como asistentes para esta sesión.")
+        st.warning("No hay alumnos marcados como asistentes presenciales para esta sesión.")
     else:
         hora_inicio = datetime.strptime("16:00", "%H:%M")
         franjas_horarias = []
@@ -180,27 +202,24 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
         alumnos_ordenados = sorted(alumnos_asistentes, key=regla_orden)
         
         with st.form("form_ver_parrilla"):
-            horarios_fijados = {}
             for idx, hora in enumerate(franjas_horarias):
                 col_h, col_a, col_t = st.columns([1, 2, 1])
                 with col_h:
                     st.markdown(f"### ⏰ {hora}")
                 with col_a:
                     def_al = alumnos_ordenados[idx] if idx < len(alumnos_ordenados) else alumnos_asistentes[0]
-                    al_asignado = st.selectbox(f"Opositor a las {hora}", alumnos_asistentes, index=alumnos_asistentes.index(def_al), key=f"parrilla_al_{idx}")
+                    st.selectbox(f"Opositor a las {hora}", alumnos_asistentes, index=alumnos_asistentes.index(def_al), key=f"parrilla_al_{idx}")
                 with col_t:
-                    tipo_p = configuracion_alumnos[al_asignado]["tipo"]
-                    st.markdown(f"**Tipo:** `{tipo_p}`")
-                horarios_fijados[hora] = al_asignado
+                    st.markdown(f"**Tipo:** `{configuracion_alumnos[def_al]['tipo']}`")
                 
             if st.form_submit_button("💾 Guardar Parrilla Definitiva"):
                 st.success("¡Parrilla de la tarde fijada correctamente!")
 
     st.markdown("---")
-    st.markdown("### ⚡ Paso 3: Evaluación Rápida en Consulta (Entrada por la Puerta)")
+    st.markdown("### ⚡ Paso 3: Actualizar Evaluación Detallada en Consulta")
     
     if lista_alumnos:
-        alumno_en_puerta = st.selectbox("Opositor que entra a consulta ahora mismo:", lista_alumnos, key="puerta_select")
+        alumno_en_puerta = st.selectbox("Opositor que entra a consulta:", lista_alumnos, key="puerta_select")
         perfil_puerta = df_alumnos_db[df_alumnos_db["Alumno"] == alumno_en_puerta]
         if not perfil_puerta.empty and perfil_puerta.iloc[0]["Circunstancias"] and perfil_puerta.iloc[0]["Circunstancias"] != "nan":
             st.warning(f"📝 **Circunstancias:** {perfil_puerta.iloc[0]['Circunstancias']}")
@@ -209,11 +228,7 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
             col_f1, col_f2 = st.columns(2)
             with col_f1:
                 bloque_flash = st.selectbox("Bloque de Materia", bloques_oposition, key="f_bloque")
-                asistencia_flash = st.selectbox(
-                    "Control de Asistencia", 
-                    ["Asiste", "Justificado (Estudio / Test)", "Falta Injustificada"], 
-                    key="f_asis"
-                )
+                asistencia_flash = st.selectbox("Control de Asistencia", opciones_asistencia, key="f_asis")
             with col_f2:
                 semaforo_flash = st.selectbox("Semáforo de Estado", ["🟢 Consolidado / Vivo", "🟡 En estudio / Mejorable", "🔴 Bloqueado / Alerta"], key="f_sem")
                 
@@ -242,7 +257,7 @@ elif menu == "📝 Registrar Sesión / Ficha (General)":
         with st.form("form_general"):
             al_gen = st.selectbox("Opositor", lista_alumnos, key="g_al")
             bl_gen = st.selectbox("Bloque", bloques_oposition, key="g_bl")
-            asis_gen = st.selectbox("Asistencia", ["Asiste", "Justificado (Estudio / Test)", "Falta Injustificada"], key="g_asis")
+            asis_gen = st.selectbox("Asistencia", opciones_asistencia, key="g_asis")
             sem_gen = st.selectbox("Estado", ["🟢 Consolidado / Vivo", "🟡 En estudio / Mejorable", "🔴 Bloqueado / Alerta"], key="g_sem")
             f_gen = st.date_input("Fecha", datetime.today(), key="g_f")
             t_sem_gen = st.text_input("Temas de la semana (ej. 1-5)", key="g_tsem")
@@ -264,46 +279,109 @@ elif menu == "📝 Registrar Sesión / Ficha (General)":
                 st.success("Guardado correctamente.")
 
 elif menu == "📊 Cuadro Resumen y Progreso":
-    st.subheader("📊 Cuadro Resumen Global por Opositor y Bloques")
+    st.subheader("📊 Cuadro Resumen Global por Opositor")
     if df_seguimiento.empty:
         st.info("Todavía no hay registros guardados.")
     else:
-        st.markdown("### 📋 Matriz General de Avance (Temas Vistos y Faltas Injustificadas)")
+        st.markdown("### 📋 Matriz General de Avance (Temas Vistos y Faltas Injustificadas Totales)")
         matriz_data = []
         for alumno in lista_alumnos:
             fila = {"Opositor": alumno}
             df_al = df_seguimiento[df_seguimiento["Alumno"] == alumno]
             
+            total_faltas_inj_alumno = 0
+            
             for bloque in bloques_oposition:
                 df_bloque = df_al[df_al["Bloque"] == bloque]
                 temas_totales_set = set()
-                faltas_injustificadas_bloque = 0
                 
                 for _, row in df_bloque.iterrows():
                     asis = str(row.get("Asistencia", "Asiste"))
                     if asis == "Falta Injustificada":
-                        faltas_injustificadas_bloque += 1
-                    elif asis == "Asiste":
-                        temas_totales_set.update(parsear_temas(str(row["Temas_Para_Esta_Semana"])))
-                    elif "Justificado" in asis:
-                        # Si está justificado por estudio/test, también puede sumar temas si los preparó
+                        total_faltas_inj_alumno += 1
+                    else:
                         temas_totales_set.update(parsear_temas(str(row["Temas_Para_Esta_Semana"])))
                 
                 lista_ordenada = sorted(list(temas_totales_set))
-                
                 detalle_str = f"({len(temas_totales_set)} temas)"
                 if lista_ordenada:
                     detalle_str += f" [{', '.join(map(str, lista_ordenada))}]"
                 
-                if faltas_injustificadas_bloque > 0:
-                    detalle_str += f" ❌ [Faltas inj.: {faltas_injustificadas_bloque}]"
-                else:
-                    detalle_str += " ✅ [0 faltas inj.]"
-                    
                 fila[bloque] = detalle_str
+                
+            fila["❌ Faltas Injustificadas"] = total_faltas_inj_alumno
             matriz_data.append(fila)
         
         st.dataframe(pd.DataFrame(matriz_data), use_container_width=True)
+
+elif menu == "📅 Control y Edición de Sesiones":
+    st.subheader("📅 Control, Modificación y Eliminación de Sesiones")
+    if df_seguimiento.empty:
+        st.info("No hay sesiones registradas.")
+    else:
+        df_ordenado = df_seguimiento.sort_values(by="Fecha", ascending=False).reset_index(drop=True)
+        
+        st.markdown("### Listado Completo de Sesiones Registradas")
+        st.info("Selecciona el índice de la sesión que deseas editar o eliminar.")
+        
+        for idx, row in df_ordenado.iterrows():
+            with st.expander(f"📅 Fecha: {row['Fecha']} | 👤 {row['Alumno']} | 🧱 {row['Bloque']} | 📌 {row['Asistencia']}"):
+                with st.form(f"form_edit_sesion_{idx}"):
+                    e_fecha = st.date_input("Fecha", value=datetime.strptime(str(row['Fecha']), "%Y-%m-%d").date() if "-" in str(row['Fecha']) else datetime.today(), key=f"ef_{idx}")
+                    e_alumno = st.selectbox("Alumno", lista_alumnos, index=lista_alumnos.index(row['Alumno']) if row['Alumno'] in lista_alumnos else 0, key=f"eal_{idx}")
+                    e_bloque = st.selectbox("Bloque", bloques_oposition, index=bloques_oposition.index(row['Bloque']) if row['Bloque'] in bloques_oposition else 0, key=f"ebl_{idx}")
+                    
+                    asis_actual = str(row['Asistencia'])
+                    idx_asis = opciones_asistencia.index(asis_actual) if asis_actual in opciones_asistencia else 0
+                    e_asistencia = st.selectbox("Asistencia", opciones_asistencia, index=idx_asis, key=f"easis_{idx}")
+                    
+                    e_temas = st.text_input("Temas", value=str(row['Temas_Para_Esta_Semana']), key=f"etemas_{idx}")
+                    e_escrito = st.text_input("Tema Escrito", value=str(row['Tema_Escrito']), key=f"eesc_{idx}")
+                    e_tiempo = st.slider("Minutos", 15, 90, int(row['Tiempo_Minutos']) if pd.notnull(row['Tiempo_Minutos']) and str(row['Tiempo_Minutos']).isdigit() else 60, key=f"etiemp_{idx}")
+                    
+                    sem_actual = str(row['Estado_Semaforo'])
+                    opciones_sem = ["🟢 Consolidado / Vivo", "🟡 En estudio / Mejorable", "🔴 Bloqueado / Alerta"]
+                    idx_sem = opciones_sem.index(sem_actual) if sem_actual in opciones_sem else 0
+                    e_semaforo = st.selectbox("Semáforo", opciones_sem, index=idx_sem, key=f"esem_{idx}")
+                    
+                    e_feedback = st.text_area("Feedback", value=str(row['Feedback_Cualitativo']), key=f"efeed_{idx}")
+                    
+                    col_b1, col_b2 = st.columns(2)
+                    with col_b1:
+                        btn_guardar_cambios = st.form_submit_button("💾 Guardar Cambios")
+                    with col_b2:
+                        btn_borrar_sesion = st.form_submit_button("🗑️ Eliminar esta Sesión")
+                        
+                    if btn_guardar_cambios:
+                        # Buscar el índice real en el df_seguimiento original
+                        orig_idx = df_seguimiento[(df_seguimiento['Fecha'] == row['Fecha']) & 
+                                                  (df_seguimiento['Alumno'] == row['Alumno']) & 
+                                                  (df_seguimiento['Bloque'] == row['Bloque'])].index
+                        if not orig_idx.empty:
+                            i_real = orig_idx[0]
+                            df_seguimiento.loc[i_real, 'Fecha'] = str(e_fecha)
+                            df_seguimiento.loc[i_real, 'Alumno'] = e_alumno
+                            df_seguimiento.loc[i_real, 'Bloque'] = e_bloque
+                            df_seguimiento.loc[i_real, 'Asistencia'] = e_asistencia
+                            df_seguimiento.loc[i_real, 'Temas_Para_Esta_Semana'] = e_temas
+                            df_seguimiento.loc[i_real, 'Tema_Escrito'] = e_escrito
+                            df_seguimiento.loc[i_real, 'Tiempo_Minutos'] = e_tiempo
+                            df_seguimiento.loc[i_real, 'Estado_Semaforo'] = e_semaforo
+                            df_seguimiento.loc[i_real, 'Feedback_Cualitativo'] = e_feedback
+                            
+                            df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
+                            st.success("¡Sesión actualizada correctamente!")
+                            st.rerun()
+                            
+                    if btn_borrar_sesion:
+                        orig_idx = df_seguimiento[(df_seguimiento['Fecha'] == row['Fecha']) & 
+                                                  (df_seguimiento['Alumno'] == row['Alumno']) & 
+                                                  (df_seguimiento['Bloque'] == row['Bloque'])].index
+                        if not orig_idx.empty:
+                            df_seguimiento = df_seguimiento.drop(orig_idx).reset_index(drop=True)
+                            df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
+                            st.success("¡Sesión eliminada correctamente!")
+                            st.rerun()
 
 elif menu == "👥 Gestión de Opositores y Perfiles":
     st.subheader("👥 Gestión de Alumnos y Perfiles")
@@ -408,26 +486,21 @@ elif menu == "📊 Histórico, Bloques y Desviación":
         for bloque in bloques_oposition:
             df_b = df_al_seg[df_al_seg["Bloque"] == bloque]
             temas_b = set()
-            faltas_inj_b = 0
             
             for _, r in df_b.iterrows():
                 asis_r = str(r.get("Asistencia", "Asiste"))
                 if asis_r == "Falta Injustificada":
-                    faltas_inj_b += 1
-                elif asis_r == "Asiste":
-                    temas_b.update(parsear_temas(str(r["Temas_Para_Esta_Semana"])))
-                elif "Justificado" in asis_r:
+                    total_faltas_injustificadas_alumno += 1
+                else:
                     temas_b.update(parsear_temas(str(r["Temas_Para_Esta_Semana"])))
             
             lista_t = sorted(list(temas_b))
             num_t = len(temas_b)
             total_temas_estudiados_alumno += num_t
-            total_faltas_injustificadas_alumno += faltas_inj_b
             
             detalle_bloques.append({
                 "Bloque": bloque,
                 "Total Temas Vistos": num_t,
-                "Faltas Injustificadas": faltas_inj_b,
                 "Temas Concretos Estudiados": ", ".join(map(str, lista_t)) if lista_t else "Ninguno"
             })
             
