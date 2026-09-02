@@ -7,7 +7,6 @@ st.set_page_config(page_title="Control Oposición Intendencia", layout="wide")
 
 DB_ALUMNOS = "alumnos_intendencia_perfiles.csv"
 DB_SEGUIMIENTO = "seguimiento_opositores.csv"
-DB_TURNOS = "turnos_simulacro_dia.csv"
 
 ALUMNOS_INICIALES = [
     "Estrella Alcoba", "Carmen Andrés Albaladejo", "Carlos Báez Gutiérrez", 
@@ -30,7 +29,11 @@ bloques_oposition = [
 
 def cargar_alumnos():
     if os.path.exists(DB_ALUMNOS):
-        return pd.read_csv(DB_ALUMNOS)
+        df = pd.read_csv(DB_ALUMNOS)
+        # Asegurar que todas las columnas son de tipo string para evitar errores de tipo
+        for col in df.columns:
+            df[col] = df[col].astype(str).replace("nan", "")
+        return df
     else:
         df = pd.DataFrame({
             "Alumno": ALUMNOS_INICIALES,
@@ -73,11 +76,8 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
     st.subheader("🕒 Gestión de Turnos de Simulacro (Lunes Tarde)")
     st.markdown("Organización secuencial de las entradas de los opositores cada 15 minutos desde las 16:00 h.")
     
-    # Selector de la fecha de los simulacros de este lunes
     fecha_simulacro = st.date_input("Fecha de la sesión de simulacros", datetime.today())
     
-    # Generar franjas horarias automáticas cada 15 min desde las 16:00 hasta completar opositores
-    # (Por defecto generamos bloques de 15 min)
     hora_inicio = datetime.strptime("16:00", "%H:%M")
     franjas_horarias = []
     for i in range(len(lista_alumnos)):
@@ -85,20 +85,14 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
         franjas_horarias.append(hora_franja)
         
     st.markdown("---")
-    st.info("💡 **Modo Dinámico de Entrada:** Selecciona el opositor que entra en cada franja horaria y evalúalo directamente al instante.")
-
-    # Crear un formulario interactivo para la tarde
+    
     with st.form("form_parrilla_turnos"):
-        registros_dia = []
-        
-        # Mostramos en columnas o filas organizadas las franjas
         asignaciones_actuales = {}
         for idx, hora in enumerate(franjas_horarias):
             col_h, col_a = st.columns([1, 3])
             with col_h:
                 st.markdown(f"### ⏰ {hora}")
             with col_a:
-                # Por defecto asignamos los alumnos en orden de la lista si no hay otra preferencia
                 def_index = idx if idx < len(lista_alumnos) else 0
                 al_asignado = st.selectbox(f"Opositor para las {hora}", lista_alumnos, index=def_index, key=f"turno_{idx}")
                 asignaciones_actuales[hora] = al_asignado
@@ -110,60 +104,79 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
     st.markdown("---")
     st.markdown("### ⚡ Evaluación Rápida por Turno (Entrada en Consulta)")
     
-    # Selector rápido del opositor que está entrando por la puerta ahora mismo
-    alumno_en_puerta = st.selectbox("Opositor que entra a consulta/simulacro ahora mismo:", lista_alumnos, key="puerta_select")
-    
-    # Cargar datos del perfil rápido
-    perfil_puerta = df_alumnos_db[df_alumnos_db["Alumno"] == alumno_en_puerta].iloc[0]
-    if perfil_puerta["Circunstancias"]:
-        st.warning(f"📝 **Nota de perfil / Circunstancias:** {perfil_puerta['Circunstancias']}")
+    if lista_alumnos:
+        alumno_en_puerta = st.selectbox("Opositor que entra a consulta/simulacro ahora mismo:", lista_alumnos, key="puerta_select")
+        
+        perfil_puerta = df_alumnos_db[df_alumnos_db["Alumno"] == alumno_en_puerta]
+        if not perfil_puerta.empty and perfil_puerta.iloc[0]["Circunstancias"] and perfil_puerta.iloc[0]["Circunstancias"] != "nan":
+            st.warning(f"📝 **Nota de perfil / Circunstancias:** {perfil_puerta.iloc[0]['Circunstancias']}")
 
-    with st.form("form_evaluacion_flash"):
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            bloque_flash = st.selectbox("Bloque de Materia", bloques_oposition, key="f_bloque")
-            semaforo_flash = st.selectbox("Semáforo de Estado", ["🟢 Consolidado / Vivo", "🟡 En estudio / Mejorable", "🔴 Bloqueado / Alerta"], key="f_sem")
-        with col_f2:
-            temas_semana_flash = st.text_input("Temas que traía para esta semana", key="f_temas_sem")
-            tema_escrito_flash = st.text_input("Tema escrito / insaculado en el atril", key="f_tema_esc")
+        with st.form("form_evaluacion_flash"):
+            col_f1, col_f2 = st.columns(2)
+            with col_f1:
+                bloque_flash = st.selectbox("Bloque de Materia", bloques_oposition, key="f_bloque")
+                semaforo_flash = st.selectbox("Semáforo de Estado", ["🟢 Consolidado / Vivo", "🟡 En estudio / Mejorable", "🔴 Bloqueado / Alerta"], key="f_sem")
+            with col_f2:
+                temas_semana_flash = st.text_input("Temas que traía para esta semana", key="f_temas_sem")
+                tema_escrito_flash = st.text_input("Tema escrito / insaculado en el atril", key="f_tema_esc")
+                
+            tiempo_flash = st.slider("Tiempo empleado (minutos)", 15, 90, 60, key="f_tiempo")
             
-        tiempo_flash = st.slider("Tiempo empleado (minutos)", 15, 90, 60, key="f_tiempo")
-        
-        errores_flash = st.multiselect("Etiquetas de Errores Recurrentes", [
-            "[E] Fallo de Estructura / Índice", 
-            "[N] Error Normativo / Plazos", 
-            "[T] Problemas de Gestión del Tiempo", 
-            "[S] Falta de Síntesis"
-        ], key="f_err")
-        
-        feedback_flash = st.text_area("Diagnóstico Cualitativo Rápido", placeholder="Notas al vuelo de su exposición...", key="f_feed")
-        
-        btn_guardar_flash = st.form_submit_button("💾 Guardar Evaluación de este Turno")
-        
-        if btn_guardar_flash:
-            nuevo_reg_flash = pd.DataFrame({
-                "Fecha": [str(fecha_simulacro)],
-                "Alumno": [alumno_en_puerta],
-                "Bloque": [bloque_flash],
-                "Temas_Para_Esta_Semana": [temas_semana_flash],
-                "Tema_Escrito": [tema_escrito_flash],
-                "Tiempo_Minutos": [tiempo_flash],
-                "Estado_Semaforo": [semaforo_flash],
-                "Errores_Frecuentes": [", ".join(errores_flash)],
-                "Feedback_Cualitativo": [feedback_flash]
-            })
+            errores_flash = st.multiselect("Etiquetas de Errores Recurrentes", [
+                "[E] Fallo de Estructura / Índice", 
+                "[N] Error Normativo / Plazos", 
+                "[T] Problemas de Gestión del Tiempo", 
+                "[S] Falta de Síntesis"
+            ], key="f_err")
             
-            df_seguimiento = pd.concat([df_seguimiento, nuevo_reg_flash], ignore_index=True)
-            df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
-            st.success(f"¡Evaluación de {alumno_en_puerta} registrada con éxito! Siguiente turno listo.")
+            feedback_flash = st.text_area("Diagnóstico Cualitativo Rápido", placeholder="Notas al vuelo de su exposición...", key="f_feed")
+            
+            btn_guardar_flash = st.form_submit_button("💾 Guardar Evaluación de este Turno")
+            
+            if btn_guardar_flash:
+                nuevo_reg_flash = pd.DataFrame({
+                    "Fecha": [str(fecha_simulacro)],
+                    "Alumno": [alumno_en_puerta],
+                    "Bloque": [bloque_flash],
+                    "Temas_Para_Esta_Semana": [temas_semana_flash],
+                    "Tema_Escrito": [tema_escrito_flash],
+                    "Tiempo_Minutos": [tiempo_flash],
+                    "Estado_Semaforo": [semaforo_flash],
+                    "Errores_Frecuentes": [", ".join(errores_flash)],
+                    "Feedback_Cualitativo": [feedback_flash]
+                })
+                
+                df_seguimiento = pd.concat([df_seguimiento, nuevo_reg_flash], ignore_index=True)
+                df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
+                st.success(f"¡Evaluación de {alumno_en_puerta} registrada con éxito!")
 
 elif menu == "📝 Registrar Sesión / Ficha (General)":
-    # (El formulario clásico anterior por si se prefiere usar fuera de los lunes)
     st.subheader("📝 Ficha General de Seguimiento")
-    # ... [Mantiene el código de la ficha clásica] ...
-    st.info("Usa la pestaña 'Turnos de Simulacro (En Vivo)' para la dinámica de los lunes por la tarde.")
+    if not lista_alumnos:
+        st.warning("No hay alumnos.")
+    else:
+        with st.form("form_general"):
+            al_gen = st.selectbox("Opositor", lista_alumnos, key="g_al")
+            bl_gen = st.selectbox("Bloque", bloques_oposition, key="g_bl")
+            sem_gen = st.selectbox("Estado", ["🟢 Consolidado / Vivo", "🟡 En estudio / Mejorable", "🔴 Bloqueado / Alerta"], key="g_sem")
+            f_gen = st.date_input("Fecha", datetime.today(), key="g_f")
+            t_sem_gen = st.text_input("Temas de la semana", key="g_tsem")
+            t_esc_gen = st.text_input("Tema escrito", key="g_tesc")
+            t_min_gen = st.slider("Minutos", 30, 90, 60, key="g_tmin")
+            err_gen = st.multiselect("Errores", ["[E] Estructura", "[N] Normativa", "[T] Tiempo", "[S] Síntesis"], key="g_err")
+            feed_gen = st.text_area("Feedback", key="g_feed")
+            
+            if st.form_submit_button("Guardar"):
+                reg_gen = pd.DataFrame({
+                    "Fecha": [str(f_gen)], "Alumno": [al_gen], "Bloque": [bl_gen], 
+                    "Temas_Para_Esta_Semana": [t_sem_gen], "Tema_Escrito": [t_esc_gen], 
+                    "Tiempo_Minutos": [t_min_gen], "Estado_Semaforo": [sem_gen], 
+                    "Errores_Frecuentes": [", ".join(err_gen)], "Feedback_Cualitativo": [feed_gen]
+                })
+                df_seguimiento = pd.concat([df_seguimiento, reg_gen], ignore_index=True)
+                df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
+                st.success("Guardado correctamente.")
 
-# [Resto de menús: Cuadro Resumen, Gestión de Opositores, Histórico...]
 elif menu == "📊 Cuadro Resumen y Progreso":
     st.subheader("📊 Cuadro Resumen General de Progreso")
     if df_seguimiento.empty:
@@ -185,45 +198,68 @@ elif menu == "📊 Cuadro Resumen y Progreso":
 
 elif menu == "👥 Gestión de Opositores y Perfiles":
     st.subheader("👥 Gestión de Alumnos y Edición de Perfiles")
-    sub_opcion = st.radio("¿Qué deseas hacer?", ["Editar Perfil Existente", "Añadir Nuevo Opositor", "Eliminar Opositor"])
     
-    if sub_opcion == "Editar Perfil Existente":
+    if not lista_alumnos:
+        sub_opcion = "Añadir Nuevo Opositor"
+        st.info("No hay alumnos en la lista. Por favor, añade uno nuevo.")
+    else:
+        sub_opcion = st.radio("¿Qué deseas hacer?", ["Editar Perfil Existente", "Añadir Nuevo Opositor", "Eliminar Opositor"])
+    
+    if sub_opcion == "Editar Perfil Existente" and lista_alumnos:
         alumno_editar = st.selectbox("Selecciona opositor a editar", lista_alumnos)
         datos_actuales = df_alumnos_db[df_alumnos_db["Alumno"] == alumno_editar].iloc[0]
+        
         with st.form("form_editar_alumno"):
             nuevo_nombre_val = st.text_input("Nombre y Apellidos", value=str(datos_actuales["Alumno"]))
-            nuevo_tel_val = st.text_input("Teléfono de contacto", value=str(datos_actuales["Telefono"]) if pd.notna(datos_actuales["Telefono"]) else "")
-            nuevo_correo_val = st.text_input("Correo electrónico", value=str(datos_actuales["Correo"]) if pd.notna(datos_actuales["Correo"]) else "")
-            nuevas_circ = st.text_area("Circunstancias / Notas de perfil", value=str(datos_actuales["Circunstancias"]) if pd.notna(datos_actuales["Circunstancias"]) else "")
+            nuevo_tel_val = st.text_input("Teléfono de contacto", value=str(datos_actuales["Telefono"]))
+            nuevo_correo_val = st.text_input("Correo electrónico", value=str(datos_actuales["Correo"]))
+            nuevas_circ = st.text_area("Circunstancias / Notas de perfil", value=str(datos_actuales["Circunstancias"]))
+            
             guardar_cambios = st.form_submit_button("Guardar Cambios de Perfil")
+            
             if guardar_cambios:
-                idx = df_alumnos_db[df_alumnos_db["Alumno"] == alumno_editar].index[0]
-                df_alumnos_db.at[idx, "Alumno"] = nuevo_nombre_val
-                df_alumnos_db.at[idx, "Telefono"] = nuevo_tel_val
-                df_alumnos_db.at[idx, "Correo"] = nuevo_correo_val
-                df_alumnos_db.at[idx, "Circunstancias"] = nuevas_circ
+                # Actualizar el DataFrame de forma segura filtrando por el nombre anterior
+                df_alumnos_db.loc[df_alumnos_db["Alumno"] == alumno_editar, "Alumno"] = nuevo_nombre_val
+                df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Telefono"] = nuevo_tel_val
+                df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Correo"] = nuevo_correo_val
+                df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Circunstancias"] = nuevas_circ
+                
                 guardar_alumnos(df_alumnos_db)
+                
+                # Actualizar también los registros históricos si cambió el nombre
                 if alumno_editar != nuevo_nombre_val:
                     df_seguimiento.loc[df_seguimiento["Alumno"] == alumno_editar, "Alumno"] = nuevo_nombre_val
                     df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
-                st.success(f"¡Perfil de {nuevo_nombre_val} actualizado!")
+                
+                st.success(f"¡Perfil de {nuevo_nombre_val} actualizado correctamente!")
                 st.rerun()
+
     elif sub_opcion == "Añadir Nuevo Opositor":
         with st.form("form_nuevo_alumno"):
             n_nombre = st.text_input("Nombre y Apellidos")
             n_tel = st.text_input("Teléfono")
             n_correo = st.text_input("Correo electrónico")
             n_circ = st.text_area("Circunstancias iniciales")
+            
             btn_crear = st.form_submit_button("Crear Opositor")
+            
             if btn_crear:
                 if n_nombre and n_nombre not in lista_alumnos:
-                    nuevo_fila = pd.DataFrame({"Alumno": [n_nombre], "Telefono": [n_tel], "Correo": [n_correo], "Circunstancias": [n_circ]})
+                    nuevo_fila = pd.DataFrame({
+                        "Alumno": [n_nombre],
+                        "Telefono": [n_tel],
+                        "Correo": [n_correo],
+                        "Circunstancias": [n_circ]
+                    })
                     df_alumnos_db = pd.concat([df_alumnos_db, nuevo_fila], ignore_index=True)
                     guardar_alumnos(df_alumnos_db)
-                    st.success(f"¡Opositor {n_nombre} añadido!")
+                    st.success(f"¡Opositor {n_nombre} añadido con éxito!")
                     st.rerun()
-    elif sub_opcion == "Eliminar Opositor":
-        alumno_a_borrar = st.selectbox("Selecciona opositor a eliminar", lista_alumnos)
+                else:
+                    st.error("El nombre está vacío o ya existe en la lista.")
+
+    elif sub_opcion == "Eliminar Opositor" and lista_alumnos:
+        alumno_a_borrar = st.selectbox("Selecciona opositor a eliminar de la lista", lista_alumnos)
         if st.button("Eliminar Definitivamente"):
             df_alumnos_db = df_alumnos_db[df_alumnos_db["Alumno"] != alumno_a_borrar]
             guardar_alumnos(df_alumnos_db)
@@ -236,8 +272,12 @@ elif menu == "📊 Histórico y Exportación por Alumno":
         st.info("No hay alumnos.")
     else:
         alumno_filtro = st.selectbox("Selecciona al opositor", lista_alumnos)
-        perfil_info = df_alumnos_db[df_alumnos_db["Alumno"] == alumno_filtro].iloc[0]
-        st.info(f"📞 Teléfono: {perfil_info['Telefono'] or 'No especificado'} | ✉️ Correo: {perfil_info['Correo'] or 'No especificado'} | 📝 Circunstancias: {perfil_info['Circunstancias'] or 'Ninguna'}")
+        perfil_info = df_alumnos_db[df_alumnos_db["Alumno"] == alumno_filtro]
+        
+        if not perfil_info.empty:
+            p_info = perfil_info.iloc[0]
+            st.info(f"📞 Teléfono: {p_info['Telefono']} | ✉️ Correo: {p_info['Correo']} | 📝 Circunstancias: {p_info['Circunstancias']}")
+        
         df_alumno = df_seguimiento[df_seguimiento["Alumno"] == alumno_filtro]
         if not df_alumno.empty:
             st.metric(label="Total de registros", value=len(df_alumno))
