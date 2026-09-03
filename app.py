@@ -173,48 +173,74 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
             
         guardar_alumnos(df_alumnos_db)
         df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
-        st.toast("¡Configuración guardada y parrilla inicial generada!", icon="✅")
+        st.toast("¡Configuración guardada y registros base generados!", icon="✅")
 
     st.markdown("---")
-    st.markdown("### ⏰ Paso 2: Parrilla de Entradas (Cruzada con Disponibilidades y Asistencia)")
+    st.markdown("### ⏰ Paso 2: Generación Automática de la Parrilla de Turnos")
     
-    # Obtenemos estrictamente los alumnos que están marcados con asistencia positiva en la tabla del Paso 1
     alumnos_asistentes = df_editado[df_editado["Asiste (Sesión)"] == True]["Opositor"].tolist()
     
     if not alumnos_asistentes:
         st.warning("⚠️ No hay alumnos marcados como asistentes en la tabla superior. Asegúrate de marcar al menos un asistente en el Paso 1.")
     else:
-        with st.form("form_ver_parrilla"):
-            for idx, hora in enumerate(FRANJAS_HORARIAS_POSIBLES):
-                col_h, col_a, col_t = st.columns([1, 2, 1])
-                with col_h:
-                    st.markdown(f"### ⏰ {hora}")
-                with col_a:
-                    # Filtramos de los asistentes aquellos cuya disponibilidad horaria incluye esta franja
-                    disponibles_en_franja = []
-                    for al in alumnos_asistentes:
-                        row_al = df_alumnos_db[df_alumnos_db["Alumno"] == al]
-                        if not row_al.empty:
-                            franjas_al = str(row_al.iloc[0]["Franja_Defecto"]).split(",")
-                            franjas_al = [f.strip() for f in franjas_al]
-                            if hora in franjas_al or not franjas_al or franjas_al == ['']:
-                                disponibles_en_franja.append(al)
-                    
-                    # Opciones finales para este selectbox: restringidas a los asistentes disponibles en esta hora exacta
-                    opciones_select = disponibles_en_franja if disponibles_en_franja else alumnos_asistentes
-                    def_al = opciones_select[idx % len(opciones_select)] if opciones_select else (alumnos_asistentes[0] if alumnos_asistentes else "")
-                    
-                    st.selectbox(
-                        f"Opositor a las {hora}", 
-                        options=opciones_select, 
-                        index=opciones_select.index(def_al) if def_al in opciones_select else 0, 
-                        key=f"parrilla_al_{idx}"
-                    )
-                with col_t:
-                    st.markdown(f"**Prueba:** `Lectura Tema Escrito`")
-                
-            if st.form_submit_button("💾 Guardar Parrilla Definitiva"):
-                st.success("¡Parrilla de la tarde fijada correctamente!")
+        if "df_parrilla_gen" not in st.session_state:
+            st.session_state["df_parrilla_gen"] = None
+
+        if st.button("🤖 Generar / Distribuir Parrilla por Disponibilidad") or st.session_state["df_parrilla_gen"] is None:
+            alumnos_pendientes = set(alumnos_asistentes)
+            disp_alumnos = {}
+            for al in alumnos_asistentes:
+                row_al = df_alumnos_db[df_alumnos_db["Alumno"] == al]
+                if not row_al.empty:
+                    f_str = str(row_al.iloc[0]["Franja_Defecto"])
+                    f_list = [f.strip() for f in f_str.split(",") if f.strip()]
+                    disp_alumnos[al] = f_list if f_list else FRANJAS_HORARIAS_POSIBLES
+                else:
+                    disp_alumnos[al] = FRANJAS_HORARIAS_POSIBLES
+
+            asignacion_map = {}
+            for hora in FRANJAS_HORARIAS_POSIBLES:
+                candidatos = [al for al in alumnos_pendientes if hora in disp_alumnos.get(al, FRANJAS_HORARIAS_POSIBLES)]
+                if candidatos:
+                    elegido = candidatos[0]
+                    asignacion_map[hora] = elegido
+                    alumnos_pendientes.remove(elegido)
+                else:
+                    asignacion_map[hora] = ""
+
+            horas_libres = [h for h, al in asignacion_map.items() if al == ""]
+            for hora in horas_libres:
+                if alumnos_pendientes:
+                    elegido = alumnos_pendientes.pop()
+                    asignacion_map[hora] = elegido
+
+            data_parrilla = []
+            for hora in FRANJAS_HORARIAS_POSIBLES:
+                data_parrilla.append({
+                    "Hora": hora,
+                    "Opositor": asignacion_map.get(hora, ""),
+                    "Prueba": "Lectura Tema Escrito"
+                })
+            st.session_state["df_parrilla_gen"] = pd.DataFrame(data_parrilla)
+
+        if st.session_state["df_parrilla_gen"] is not None:
+            st.info("💡 La tabla inferior cruza automáticamente la asistencia con la disponibilidad horaria guardada en el perfil de cada opositor. Puedes modificar cualquier celda si lo deseas.")
+            
+            df_parrilla_editado = st.data_editor(
+                st.session_state["df_parrilla_gen"],
+                column_config={
+                    "Hora": st.column_config.TextColumn("Hora", disabled=True),
+                    "Opositor": st.column_config.SelectboxColumn("Opositor", options=[""] + alumnos_asistentes, required=False),
+                    "Prueba": st.column_config.TextColumn("Prueba")
+                },
+                hide_index=True,
+                use_container_width=True,
+                key="tabla_parrilla_edit"
+            )
+
+            if st.button("💾 Guardar Parrilla Definitiva"):
+                st.session_state["df_parrilla_gen"] = df_parrilla_editado
+                st.success("¡Parrilla de la tarde fijada y guardada correctamente!")
 
     st.markdown("---")
     st.markdown("### ⚡ Paso 3: Actualizar Evaluación Detallada en Consulta")
