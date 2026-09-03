@@ -27,6 +27,16 @@ bloques_oposition = [
     "Contabilidad"
 ]
 
+# Total de temas teóricos por cada bloque (Constitucional configurado a 7 por defecto)
+TOTAL_TEMAS_BLOQUE_DEFAULT = {
+    "Hacienda Pública": 25,
+    "Constitucional": 7,
+    "Derecho Administrativo": 30,
+    "Derecho Financiero y Sistema Fiscal": 25,
+    "Economía": 25,
+    "Contabilidad": 20
+}
+
 opciones_asistencia = ["Asiste", "Justificado (Estudio / Test)", "Falta Injustificada"]
 
 FRANJAS_HORARIAS_POSIBLES = [
@@ -136,7 +146,10 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
     st.markdown("### 🛠️ Paso 1: Configuración Rápida de Asistencia y Bloques")
     st.info("Modifica directamente en la tabla la asistencia y el bloque para esta sesión, y pulsa en guardar cambios.")
 
+    seleccionar_todos_estado = st.checkbox("✅ Seleccionar / Desmarcar a todos los asistentes por defecto", value=True)
+
     df_config_tabla = df_alumnos_db[["Alumno", "Asiste_Por_Defecto", "Bloque_Habitual"]].copy()
+    df_config_tabla["Asiste_Por_Defecto"] = seleccionar_todos_estado
     df_config_tabla.columns = ["Opositor", "Asiste (Sesión)", "Bloque de Materia"]
 
     df_editado = st.data_editor(
@@ -323,123 +336,76 @@ elif menu == "📊 Cuadro Resumen y Progreso":
         df_matriz = df_matriz.sort_values(by="_score", ascending=False).drop(columns=["_score"]).reset_index(drop=True)
         
         st.dataframe(df_matriz, use_container_width=True)
+        
+        csv_matriz = df_matriz.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Descargar Matriz de Avance Global (CSV)", data=csv_matriz, file_name="matriz_resumen_opositores.csv", mime="text/csv")
 
 elif menu == "📅 Control y Edición de Sesiones":
-    st.subheader("📅 Control, Modificación y Eliminación de Sesiones Completas")
+    st.subheader("📅 Control, Modificación y Eliminación de Sesiones")
     if df_seguimiento.empty:
         st.info("No hay sesiones registradas.")
     else:
-        fechas_unicas = sorted(df_seguimiento["Fecha"].unique(), reverse=True)
+        df_ordenado = df_seguimiento.sort_values(by="Fecha", ascending=False).reset_index(drop=True)
         
-        st.markdown("### Listado de Sesiones por Fecha")
+        st.markdown("### Listado Completo de Sesiones Registradas")
         
-        for fecha_sesion in fechas_unicas:
-            df_sesion_actual = df_seguimiento[df_seguimiento["Fecha"] == fecha_sesion]
-            bloques_en_sesion = df_sesion_actual["Bloque"].unique()
-            bloques_str = ", ".join(bloques_en_sesion)
-            num_alumnos_sesion = len(df_sesion_actual)
-            
-            with st.expander(f"📅 Fecha: {fecha_sesion} | 🧱 Bloques: {bloques_str} | 👥 Alumnos evaluados: {num_alumnos_sesion}"):
-                
-                col_del1, col_del2 = st.columns([3, 1])
-                with col_del2:
-                    if st.button("🗑️ Eliminar Sesión Completa", key=f"btn_del_sesion_{fecha_sesion}"):
-                        df_seguimiento = df_seguimiento[df_seguimiento["Fecha"] != fecha_sesion].reset_index(drop=True)
-                        df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
-                        st.success(f"¡Sesión del día {fecha_sesion} eliminada por completo!")
-                        st.rerun()
-                
-                st.markdown("---")
-                st.markdown("#### 📝 Detalle de opositores en esta sesión")
-                
-                with st.form(f"form_edit_sesion_completa_{fecha_sesion}"):
-                    nueva_fecha_val = st.date_input(
-                        "Fecha de la sesión", 
-                        value=datetime.strptime(str(fecha_sesion), "%Y-%m-%d").date() if "-" in str(fecha_sesion) else datetime.today(), 
-                        key=f"f_fecha_ses_{fecha_sesion}"
-                    )
+        for idx, row in df_ordenado.iterrows():
+            with st.expander(f"📅 Fecha: {row['Fecha']} | 👤 {row['Alumno']} | 🧱 {row['Bloque']} | 📌 {row['Asistencia']}"):
+                with st.form(f"form_edit_sesion_{idx}"):
+                    e_fecha = st.date_input("Fecha", value=datetime.strptime(str(row['Fecha']), "%Y-%m-%d").date() if "-" in str(row['Fecha']) else datetime.today(), key=f"ef_{idx}")
+                    e_alumno = st.selectbox("Alumno", lista_alumnos, index=lista_alumnos.index(row['Alumno']) if row['Alumno'] in lista_alumnos else 0, key=f"eal_{idx}")
+                    e_bloque = st.selectbox("Bloque", bloques_oposition, index=bloques_oposition.index(row['Bloque']) if row['Bloque'] in bloques_oposition else 0, key=f"ebl_{idx}")
                     
-                    registros_actualizados = []
-                    for idx, row in df_sesion_actual.iterrows():
-                        st.markdown(f"**Opositor: {row['Alumno']}** *(Bloque: {row['Bloque']})*")
-                        c1, c2, c3 = st.columns(3)
-                        
-                        with c1:
-                            asis_actual = str(row['Asistencia'])
-                            idx_asis = opciones_asistencia.index(asis_actual) if asis_actual in opciones_asistencia else 0
-                            nuevo_asis = st.selectbox(
-                                "Asistencia", 
-                                opciones_asistencia, 
-                                index=idx_asis, 
-                                key=f"asis_{fecha_sesion}_{idx}"
-                            )
-                        with c2:
-                            nuevo_temas = st.text_input(
-                                "Temas", 
-                                value=str(row['Temas_Para_Esta_Semana']), 
-                                key=f"temas_{fecha_sesion}_{idx}"
-                            )
-                        with c3:
-                            nuevo_tema_esc = st.text_input(
-                                "Tema Escrito", 
-                                value=str(row['Tema_Escrito']), 
-                                key=f"esc_{fecha_sesion}_{idx}"
-                            )
-                        
-                        c4, c5 = st.columns(2)
-                        with c4:
-                            nuevo_tiempo = st.slider(
-                                "Minutos", 
-                                15, 90, 
-                                int(row['Tiempo_Minutos']) if pd.notnull(row['Tiempo_Minutos']) and str(row['Tiempo_Minutos']).isdigit() else 60, 
-                                key=f"tiempo_{fecha_sesion}_{idx}"
-                            )
-                        with c5:
-                            sem_actual = str(row['Estado_Semaforo'])
-                            opciones_sem = ["🟢 Consolidado / Vivo", "🟡 En estudio / Mejorable", "🔴 Bloqueado / Alerta"]
-                            idx_sem = opciones_sem.index(sem_actual) if sem_actual in opciones_sem else 0
-                            nuevo_sem = st.selectbox(
-                                "Semáforo", 
-                                opciones_sem, 
-                                index=idx_sem, 
-                                key=f"sem_{fecha_sesion}_{idx}"
-                            )
-                            
-                        nuevo_feedback = st.text_area(
-                            "Feedback Cualitativo", 
-                            value=str(row['Feedback_Cualitativo']), 
-                            key=f"feed_{fecha_sesion}_{idx}"
-                        )
-                        st.markdown("---")
-                        
-                        registros_actualizados.append({
-                            "index_original": idx,
-                            "Fecha": str(nueva_fecha_val),
-                            "Alumno": row['Alumno'],
-                            "Bloque": row['Bloque'],
-                            "Asistencia": nuevo_asis,
-                            "Temas_Para_Esta_Semana": nuevo_temas,
-                            "Tema_Escrito": nuevo_tema_esc,
-                            "Tiempo_Minutos": nuevo_tiempo,
-                            "Estado_Semaforo": nuevo_sem,
-                            "Errores_Frecuentes": row['Errores_Frecuentes'],
-                            "Feedback_Cualitativo": nuevo_feedback
-                        })
+                    asis_actual = str(row['Asistencia'])
+                    idx_asis = opciones_asistencia.index(asis_actual) if asis_actual in opciones_asistencia else 0
+                    e_asistencia = st.selectbox("Asistencia", opciones_asistencia, index=idx_asis, key=f"easis_{idx}")
                     
-                    if st.form_submit_button("💾 Guardar Cambios de esta Sesión"):
-                        for reg in registros_actualizados:
-                            i_orig = reg["index_original"]
-                            df_seguimiento.loc[i_orig, 'Fecha'] = reg["Fecha"]
-                            df_seguimiento.loc[i_orig, 'Asistencia'] = reg["Asistencia"]
-                            df_seguimiento.loc[i_orig, 'Temas_Para_Esta_Semana'] = reg["Temas_Para_Esta_Semana"]
-                            df_seguimiento.loc[i_orig, 'Tema_Escrito'] = reg["Tema_Escrito"]
-                            df_seguimiento.loc[i_orig, 'Tiempo_Minutos'] = reg["Tiempo_Minutos"]
-                            df_seguimiento.loc[i_orig, 'Estado_Semaforo'] = reg["Estado_Semaforo"]
-                            df_seguimiento.loc[i_orig, 'Feedback_Cualitativo'] = reg["Feedback_Cualitativo"]
+                    e_temas = st.text_input("Temas", value=str(row['Temas_Para_Esta_Semana']), key=f"etemas_{idx}")
+                    e_escrito = st.text_input("Tema Escrito", value=str(row['Tema_Escrito']), key=f"eesc_{idx}")
+                    e_tiempo = st.slider("Minutos", 15, 90, int(row['Tiempo_Minutos']) if pd.notnull(row['Tiempo_Minutos']) and str(row['Tiempo_Minutos']).isdigit() else 60, key=f"etiemp_{idx}")
+                    
+                    sem_actual = str(row['Estado_Semaforo'])
+                    opciones_sem = ["🟢 Consolidado / Vivo", "🟡 En estudio / Mejorable", "🔴 Bloqueado / Alerta"]
+                    idx_sem = opciones_sem.index(sem_actual) if sem_actual in opciones_sem else 0
+                    e_semaforo = st.selectbox("Semáforo", opciones_sem, index=idx_sem, key=f"esem_{idx}")
+                    
+                    e_feedback = st.text_area("Feedback", value=str(row['Feedback_Cualitativo']), key=f"efeed_{idx}")
+                    
+                    col_b1, col_b2 = st.columns(2)
+                    with col_b1:
+                        btn_guardar_cambios = st.form_submit_button("💾 Guardar Cambios")
+                    with col_b2:
+                        btn_borrar_sesion = st.form_submit_button("🗑️ Eliminar esta Sesión")
+                        
+                    if btn_guardar_cambios:
+                        orig_idx = df_seguimiento[(df_seguimiento['Fecha'] == row['Fecha']) & 
+                                                  (df_seguimiento['Alumno'] == row['Alumno']) & 
+                                                  (df_seguimiento['Bloque'] == row['Bloque'])].index
+                        if not orig_idx.empty:
+                            i_real = orig_idx[0]
+                            df_seguimiento.loc[i_real, 'Fecha'] = str(e_fecha)
+                            df_seguimiento.loc[i_real, 'Alumno'] = e_alumno
+                            df_seguimiento.loc[i_real, 'Bloque'] = e_bloque
+                            df_seguimiento.loc[i_real, 'Asistencia'] = e_asistencia
+                            df_seguimiento.loc[i_real, 'Temas_Para_Esta_Semana'] = e_temas
+                            df_seguimiento.loc[i_real, 'Tema_Escrito'] = e_escrito
+                            df_seguimiento.loc[i_real, 'Tiempo_Minutos'] = e_tiempo
+                            df_seguimiento.loc[i_real, 'Estado_Semaforo'] = e_semaforo
+                            df_seguimiento.loc[i_real, 'Feedback_Cualitativo'] = e_feedback
                             
-                        df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
-                        st.success("¡Sesión completa actualizada correctamente!")
-                        st.rerun()
+                            df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
+                            st.success("¡Sesión actualizada correctamente!")
+                            st.rerun()
+                            
+                    if btn_borrar_sesion:
+                        orig_idx = df_seguimiento[(df_seguimiento['Fecha'] == row['Fecha']) & 
+                                                  (df_seguimiento['Alumno'] == row['Alumno']) & 
+                                                  (df_seguimiento['Bloque'] == row['Bloque'])].index
+                        if not orig_idx.empty:
+                            df_seguimiento = df_seguimiento.drop(orig_idx).reset_index(drop=True)
+                            df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
+                            st.success("¡Sesión eliminada correctamente!")
+                            st.rerun()
 
 elif menu == "👥 Gestión de Opositores y Perfiles":
     st.subheader("👥 Gestión de Alumnos y Perfiles")
@@ -544,7 +510,7 @@ elif menu == "📊 Histórico, Bloques y Desviación":
             st.info(f"📞 Teléfono: {p['Telefono']} | ✉️ Correo: {p['Correo']} | 📝 Circunstancias: {p['Circunstancias']} | ⏰ Disponibilidad Habitual: `{p['Franja_Defecto']}`")
         
         st.markdown("---")
-        st.markdown("### 🧱 Detalle por Bloque y Gráfico de Rendimiento")
+        st.markdown("### 🧱 Detalle por Bloque, Vueltas y Gráfico de Rendimiento")
         df_al_seg = df_seguimiento[df_seguimiento["Alumno"] == alumno_filtro]
         
         detalle_bloques = []
@@ -566,9 +532,17 @@ elif menu == "📊 Histórico, Bloques y Desviación":
             num_t = len(temas_b)
             total_temas_estudiados_alumno += num_t
             
+            # Control de vueltas completas y temas totales del bloque
+            total_temas_teoricos_bloque = TOTAL_TEMAS_BLOQUE_DEFAULT.get(bloque, 20)
+            vueltas_completas = num_t // total_temas_teoricos_bloque
+            temas_en_vuelta_actual = num_t % total_temas_teoricos_bloque
+            
             detalle_bloques.append({
                 "Bloque": bloque,
-                "Total Temas Vistos": num_t,
+                "Temas Totales Bloque": total_temas_teoricos_bloque,
+                "Temas Únicos Vistos": num_t,
+                "🔄 Vueltas Completas": vueltas_completas,
+                "Progreso Vuelta Actual": f"{temas_en_vuelta_actual} / {total_temas_teoricos_bloque}",
                 "Temas Concretos Estudiados": ", ".join(map(str, lista_t)) if lista_t else "Ninguno"
             })
             
@@ -577,7 +551,7 @@ elif menu == "📊 Histórico, Bloques y Desviación":
         
         if not df_det_bloques.empty:
             st.markdown(f"**📈 Gráfico de Temas Vistos por Bloque ({alumno_filtro})**")
-            df_chart = df_det_bloques.set_index("Bloque")[["Total Temas Vistos"]]
+            df_chart = df_det_bloques.set_index("Bloque")[["Temas Únicos Vistos"]]
             st.bar_chart(df_chart)
         
         st.markdown("---")
