@@ -176,12 +176,13 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
         st.toast("¡Configuración guardada y parrilla inicial generada!", icon="✅")
 
     st.markdown("---")
-    st.markdown("### ⏰ Paso 2: Parrilla de Entradas (Cruzada con Disponibilidades)")
+    st.markdown("### ⏰ Paso 2: Parrilla de Entradas (Cruzada con Disponibilidades y Asistencia)")
     
+    # Obtenemos estrictamente los alumnos que están marcados con asistencia positiva en la tabla del Paso 1
     alumnos_asistentes = df_editado[df_editado["Asiste (Sesión)"] == True]["Opositor"].tolist()
     
     if not alumnos_asistentes:
-        st.warning("No hay alumnos marcados como asistentes en la tabla superior.")
+        st.warning("⚠️ No hay alumnos marcados como asistentes en la tabla superior. Asegúrate de marcar al menos un asistente en el Paso 1.")
     else:
         with st.form("form_ver_parrilla"):
             for idx, hora in enumerate(FRANJAS_HORARIAS_POSIBLES):
@@ -189,7 +190,7 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
                 with col_h:
                     st.markdown(f"### ⏰ {hora}")
                 with col_a:
-                    # Filtrar opositores cuya disponibilidad incluye esta franja horaria
+                    # Filtramos de los asistentes aquellos cuya disponibilidad horaria incluye esta franja
                     disponibles_en_franja = []
                     for al in alumnos_asistentes:
                         row_al = df_alumnos_db[df_alumnos_db["Alumno"] == al]
@@ -199,14 +200,14 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
                             if hora in franjas_al or not franjas_al or franjas_al == ['']:
                                 disponibles_en_franja.append(al)
                     
-                    # Si nadie tiene marcada explícitamente esta franja, permitimos elegir entre todos los asistentes
+                    # Opciones finales para este selectbox: restringidas a los asistentes disponibles en esta hora exacta
                     opciones_select = disponibles_en_franja if disponibles_en_franja else alumnos_asistentes
                     def_al = opciones_select[idx % len(opciones_select)] if opciones_select else (alumnos_asistentes[0] if alumnos_asistentes else "")
                     
                     st.selectbox(
                         f"Opositor a las {hora}", 
-                        alumnos_asistentes, 
-                        index=alumnos_asistentes.index(def_al) if def_al in alumnos_asistentes else 0, 
+                        options=opciones_select, 
+                        index=opciones_select.index(def_al) if def_al in opciones_select else 0, 
                         key=f"parrilla_al_{idx}"
                     )
                 with col_t:
@@ -402,7 +403,6 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
                         franjas_editadas_seleccionadas.append(hora_f)
             
             if st.form_submit_button("Guardar Cambios"):
-                # Actualizar o renombrar en el DataFrame de alumnos
                 df_alumnos_db.loc[df_alumnos_db["Alumno"] == alumno_editar, "Alumno"] = nuevo_nombre_val
                 df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Telefono"] = nuevo_tel_val
                 df_alumnos_db.loc[df_alumnos_db["Alumno"] == nuevo_nombre_val, "Correo"] = nuevo_correo_val
@@ -499,7 +499,6 @@ elif menu == "📊 Histórico, Bloques y Desviación":
         df_det_bloques = pd.DataFrame(detalle_bloques)
         st.dataframe(df_det_bloques, use_container_width=True)
         
-        # Gráfico nativo de Streamlit
         if not df_det_bloques.empty:
             st.markdown(f"**📈 Gráfico de Temas Vistos por Bloque ({alumno_filtro})**")
             df_chart = df_det_bloques.set_index("Bloque")[["Total Temas Vistos"]]
