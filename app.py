@@ -27,14 +27,22 @@ bloques_oposition = [
     "Contabilidad"
 ]
 
-# Total de temas teóricos por cada bloque (Constitucional configurado a 7 por defecto)
-TOTAL_TEMAS_BLOQUE_DEFAULT = {
-    "Hacienda Pública": 25,
-    "Constitucional": 7,
-    "Derecho Administrativo": 30,
-    "Derecho Financiero y Sistema Fiscal": 25,
-    "Economía": 25,
-    "Contabilidad": 20
+# Definición explícita de los temas de cada bloque (Constitucional con sus 7 temas exactos)
+TEMAS_POR_BLOQUE = {
+    "Constitucional": [
+        "Tema 1: La Constitución Española de 1978. Caracteres y estructura. Los principios constitucionales y valores superiores.",
+        "Tema 2: Los derechos fundamentales y libertades públicas en la Constitución. Su garantía y suspensión.",
+        "Tema 3: La Corona. Funciones del Rey. Sucesión y aforamiento.",
+        "Tema 4: Las Cortes Generales. Composición, atribuciones y funcionamiento del Congreso de los Diputados y del Senado.",
+        "Tema 5: El Gobierno y la Administración. Relaciones entre el Gobierno y las Cortes Generales.",
+        "Tema 6: El Poder Judicial. Principios constitucionales. El Consejo General del Poder Judicial y el Tribunal Supremo.",
+        "Tema 7: El Tribunal Constitucional. Composición, competencias y efectos de sus sentencias."
+    ],
+    "Hacienda Pública": [f"Tema {i}: Contenido y desarrollo de Hacienda Pública" for i in range(1, 26)],
+    "Derecho Administrativo": [f"Tema {i}: Contenido y desarrollo de Derecho Administrativo" for i in range(1, 31)],
+    "Derecho Financiero y Sistema Fiscal": [f"Tema {i}: Contenido y desarrollo de Derecho Financiero" for i in range(1, 26)],
+    "Economía": [f"Tema {i}: Contenido y desarrollo de Economía" for i in range(1, 26)],
+    "Contabilidad": [f"Tema {i}: Contenido y desarrollo de Contabilidad" for i in range(1, 21)]
 }
 
 opciones_asistencia = ["Asiste", "Justificado (Estudio / Test)", "Falta Injustificada"]
@@ -532,10 +540,10 @@ elif menu == "📊 Histórico, Bloques y Desviación":
             num_t = len(temas_b)
             total_temas_estudiados_alumno += num_t
             
-            # Control de vueltas completas y temas totales del bloque
-            total_temas_teoricos_bloque = TOTAL_TEMAS_BLOQUE_DEFAULT.get(bloque, 20)
-            vueltas_completas = num_t // total_temas_teoricos_bloque
-            temas_en_vuelta_actual = num_t % total_temas_teoricos_bloque
+            temas_lista_temario = TEMAS_POR_BLOQUE.get(bloque, [])
+            total_temas_teoricos_bloque = len(temas_lista_temario)
+            vueltas_completas = num_t // total_temas_teoricos_bloque if total_temas_teoricos_bloque > 0 else 0
+            temas_en_vuelta_actual = num_t % total_temas_teoricos_bloque if total_temas_teoricos_bloque > 0 else 0
             
             detalle_bloques.append({
                 "Bloque": bloque,
@@ -549,6 +557,13 @@ elif menu == "📊 Histórico, Bloques y Desviación":
         df_det_bloques = pd.DataFrame(detalle_bloques)
         st.dataframe(df_det_bloques, use_container_width=True)
         
+        # Desplegable visual para ver los títulos exactos de cada tema por bloque
+        with st.expander("📖 Ver Temario Completo y Títulos por Bloque"):
+            bloque_seleccionado_temario = st.selectbox("Selecciona bloque para consultar sus temas:", bloques_oposition)
+            temas_del_bloque = TEMAS_POR_BLOQUE.get(bloque_seleccionado_temario, [])
+            for t in temas_del_bloque:
+                st.write(f"- {t}")
+
         if not df_det_bloques.empty:
             st.markdown(f"**📈 Gráfico de Temas Vistos por Bloque ({alumno_filtro})**")
             df_chart = df_det_bloques.set_index("Bloque")[["Temas Únicos Vistos"]]
