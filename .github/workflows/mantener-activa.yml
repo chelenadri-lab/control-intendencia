@@ -12,4 +12,4 @@ jobs:
     steps:
       - name: Hacer ping a Streamlit
         run: |
-          curl -I https://control-asistencia.streamlit.app
+          curl -I https://control-intendencia-bvtwekvldp9jafcgvhi7ah.streamlit.app
