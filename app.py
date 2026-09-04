@@ -208,7 +208,6 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
             st.session_state["df_parrilla_gen"] = None
 
         if st.button("🤖 Generar / Distribuir Parrilla por Disponibilidad") or st.session_state["df_parrilla_gen"] is None:
-            # 1. Cargar la disponibilidad real de cada asistente
             disp_alumnos = {}
             for al in alumnos_asistentes:
                 row_al = df_alumnos_db[df_alumnos_db["Alumno"] == al]
@@ -219,17 +218,13 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
                 else:
                     disp_alumnos[al] = FRANJAS_HORARIAS_POSIBLES
 
-            # 2. ORDENAR LOS OPOSITORES DE MENOS A MÁS DISPONIBILIDAD (Prioridad estricta a los restrictivos)
             alumnos_ordenados_por_restriccion = sorted(alumnos_asistentes, key=lambda a: len(disp_alumnos[a]))
 
-            asignacion_map = {}  # Relación Hora -> Alumno
+            asignacion_map = {}
             horas_disponibles_set = set(FRANJAS_HORARIAS_POSIBLES)
 
-            # 3. Asignar primero a los que tienen menos huecos posibles
             for al in alumnos_ordenados_por_restriccion:
                 huecos_posibles_alumno = disp_alumnos[al]
-                
-                # Buscar un hueco libre que este alumno acepte
                 hueco_asignado = None
                 for h in huecos_posibles_alumno:
                     if h in horas_disponibles_set:
@@ -240,13 +235,11 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
                     asignacion_map[hueco_asignado] = al
                     horas_disponibles_set.remove(hueco_asignado)
                 else:
-                    # Si sus horas preferidas están ocupadas, se le asigna la primera hora libre que quede
                     if horas_disponibles_set:
                         hueco_emergencia = sorted(list(horas_disponibles_set))[0]
                         asignacion_map[hueco_emergencia] = al
                         horas_disponibles_set.remove(hueco_emergencia)
 
-            # 4. Construir la tabla final ordenada por hora cronológica
             data_parrilla = []
             for hora in FRANJAS_HORARIAS_POSIBLES:
                 data_parrilla.append({
@@ -315,7 +308,6 @@ elif menu == "📋 Parrilla Teórica Simulada":
     st.subheader("📋 Simulador de Parrilla Teórica por Preferencias Horarias")
     st.info("Esta herramienta permite comprobar de forma teórica cómo se organizarían los turnos de la tarde cruzando la disponibilidad registrada en los perfiles de todos los alumnos activos.")
 
-    # Selección rápida de qué alumnos asisten para la simulación
     asistentes_simulacion = st.multiselect(
         "Selecciona los opositores que participan en esta simulación:",
         options=lista_alumnos,
@@ -326,7 +318,6 @@ elif menu == "📋 Parrilla Teórica Simulada":
         st.warning("⚠️ Selecciona al menos un opositor para generar la simulación.")
     else:
         if st.button("🚀 Generar Simulación Teórica de Turnos"):
-            # 1. Cargar disponibilidades
             disp_alumnos = {}
             for al in asistentes_simulacion:
                 row_al = df_alumnos_db[df_alumnos_db["Alumno"] == al]
@@ -337,7 +328,6 @@ elif menu == "📋 Parrilla Teórica Simulada":
                 else:
                     disp_alumnos[al] = FRANJAS_HORARIAS_POSIBLES
 
-            # 2. Ordenar por restricción (menor disponibilidad primero)
             alumnos_ordenados_por_restriccion = sorted(asistentes_simulacion, key=lambda a: len(disp_alumnos[a]))
 
             asignacion_map = {}
@@ -360,12 +350,10 @@ elif menu == "📋 Parrilla Teórica Simulada":
                         asignacion_map[hueco_emergencia] = al
                         horas_disponibles_set.remove(hueco_emergencia)
 
-            # 3. Construir tabla de resultados de la simulación
             data_simulacion = []
             for hora in FRANJAS_HORARIAS_POSIBLES:
                 alumno_asignado = asignacion_map.get(hora, "--- (Libre) ---")
                 
-                # Obtener detalles de restricciones del alumno asignado para auditoría visual
                 restriccion_txt = "Disponibilidad Total"
                 if alumno_asignado in disp_alumnos:
                     num_huecos = len(disp_alumnos[alumno_asignado])
@@ -529,11 +517,21 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
             idx_bh = bloques_oposition.index(bloque_habitual_actual) if bloque_habitual_actual in bloques_oposition else 0
             nuevo_bloque_hab = st.selectbox("Bloque Habitual", bloques_oposition, index=idx_bh)
             
-            st.markdown("**Disponibilidad por franjas de 15 minutos (Desmarca lo que no esté disponible):**")
+            st.markdown("---")
+            # CASILLA MAESTRA PARA SELECCIONAR / DESMARCAR TODAS LAS HORAS DE GOLPE
+            todas_seleccionadas_por_defecto = len(franjas_guardadas_act) == len(FRANJAS_HORARIAS_POSIBLES)
+            seleccionar_todas_horas = st.checkbox("✅ Marcar / Desmarcar todas las franjas horarias a la vez", value=todas_seleccionadas_por_defecto)
+            
+            st.markdown("**Disponibilidad por franjas de 15 minutos:**")
             cols_ed = st.columns(4)
             franjas_editadas_seleccionadas = []
             for idx_f, hora_f in enumerate(FRANJAS_HORARIAS_POSIBLES):
-                default_chk = hora_f in franjas_guardadas_act if franjas_str_act else True
+                # Si el checkbox maestro está activado, todas se marcan; si está desactivado, se limpian, salvo que el usuario cambie alguna individualmente
+                if seleccionar_todas_horas:
+                    default_chk = True
+                else:
+                    default_chk = hora_f in franjas_guardadas_act if franjas_str_act else False
+                
                 with cols_ed[idx_f % 4]:
                     if st.checkbox(hora_f, value=default_chk, key=f"ed_f_{idx_f}"):
                         franjas_editadas_seleccionadas.append(hora_f)
@@ -565,12 +563,16 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
             n_asiste_def = st.checkbox("Asiste por defecto cada semana", value=True)
             n_bloque_hab = st.selectbox("Bloque Habitual", bloques_oposition)
             
-            st.markdown("**Disponibilidad por franjas de 15 minutos (Todas marcadas por defecto):**")
+            st.markdown("---")
+            seleccionar_todas_nuevas = st.checkbox("✅ Marcar / Desmarcar todas las franjas horarias a la vez", value=True, key="master_nuevo")
+            
+            st.markdown("**Disponibilidad por franjas de 15 minutos:**")
             cols_nue = st.columns(4)
             franjas_nuevas_seleccionadas = []
             for idx_f, hora_f in enumerate(FRANJAS_HORARIAS_POSIBLES):
+                default_chk_nue = True if seleccionar_todas_nuevas else False
                 with cols_nue[idx_f % 4]:
-                    if st.checkbox(hora_f, value=True, key=f"nue_f_{idx_f}"):
+                    if st.checkbox(hora_f, value=default_chk_nue, key=f"nue_f_{idx_f}"):
                         franjas_nuevas_seleccionadas.append(hora_f)
             
             if st.form_submit_button("Crear Opositor"):
