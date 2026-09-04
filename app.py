@@ -8,6 +8,7 @@ st.set_page_config(page_title="Control Oposición Intendencia", layout="wide")
 DB_ALUMNOS = "alumnos_intendencia_perfiles.csv"
 DB_SEGUIMIENTO = "seguimiento_opositores.csv"
 
+# Lista de referencia en código (sirve como base inicial y para incorporar nuevas incorporaciones automáticamente)
 ALUMNOS_INICIALES = [
     "Estrella Alcoba", "Carmen Andrés Albaladejo", "Carlos Báez Gutiérrez", 
     "Alberto Bravo", "Javier Carreras", "Cristian Carrillo", "Fernando Casanova", 
@@ -67,18 +68,49 @@ OPCIONES_ERRORES = [
 ]
 
 def cargar_alumnos():
+    """
+    Carga los alumnos respetando los cambios, ediciones, altas y bajas guardadas en el CSV.
+    Si en el futuro añades nuevos nombres en ALUMNOS_INICIALES del código, se fusionarán
+    automáticamente sin pisar las modificaciones o datos personalizados previos.
+    """
+    columnas_base = ["Alumno", "Telefono", "Correo", "Circunstancias", "Asiste_Por_Defecto", "Bloque_Habitual", "Franja_Defecto"]
+    
     if os.path.exists(DB_ALUMNOS):
         df = pd.read_csv(DB_ALUMNOS, encoding="utf-8")
-        if "Asiste_Por_Defecto" not in df.columns:
-            df["Asiste_Por_Defecto"] = True
-        if "Franja_Defecto" not in df.columns:
-            df["Franja_Defecto"] = ",".join(FRANJAS_HORARIAS_POSIBLES)
-        if "Bloque_Habitual" not in df.columns:
-            df["Bloque_Habitual"] = bloques_oposition[0]
-            
+        
+        # Asegurar compatibilidad de columnas si el CSV antiguo carecía de alguna nueva
+        for col in columnas_base:
+            if col not in df.columns:
+                if col == "Asiste_Por_Defecto":
+                    df[col] = True
+                elif col == "Bloque_Habitual":
+                    df[col] = bloques_oposition[0]
+                elif col == "Franja_Defecto":
+                    df[col] = ",".join(FRANJAS_HORARIAS_POSIBLES)
+                else:
+                    df[col] = ""
+                    
         for col in df.columns:
             df[col] = df[col].astype(str).replace("nan", "")
         df["Asiste_Por_Defecto"] = df["Asiste_Por_Defecto"].apply(lambda x: True if str(x).lower() in ["true", "1", "yes"] else False)
+        
+        # Fusión inteligente: comprobar si hay nuevos alumnos en el código que no estén en el CSV
+        alumnos_en_csv = df["Alumno"].tolist()
+        nuevos_detectados = [al for al in ALUMNOS_INICIALES if al not in alumnos_en_csv]
+        
+        if nuevos_detectados:
+            df_nuevos = pd.DataFrame({
+                "Alumno": nuevos_detectados,
+                "Telefono": ["" for _ in nuevos_detectados],
+                "Correo": ["" for _ in nuevos_detectados],
+                "Circunstancias": ["" for _ in nuevos_detectados],
+                "Asiste_Por_Defecto": [True for _ in nuevos_detectados],
+                "Bloque_Habitual": [bloques_oposition[0] for _ in nuevos_detectados],
+                "Franja_Defecto": [",".join(FRANJAS_HORARIAS_POSIBLES) for _ in nuevos_detectados]
+            })
+            df = pd.concat([df, df_nuevos], ignore_index=True)
+            df.to_csv(DB_ALUMNOS, index=False, encoding="utf-8")
+            
         return df
     else:
         df = pd.DataFrame({
@@ -519,11 +551,9 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
             
             st.markdown("---")
             
-            # CASILLA MAESTRA CON SINCRONIZACIÓN DE ESTADO
             todas_seleccionadas_por_defecto = len(franjas_guardadas_act) == len(FRANJAS_HORARIAS_POSIBLES)
             seleccionar_todas_horas = st.checkbox("✅ Marcar / Desmarcar todas las franjas horarias a la vez", value=todas_seleccionadas_por_defecto, key="master_edicion")
             
-            # Si cambia la casilla maestra, forzamos el estado de todas las franjas individuales en st.session_state
             if "master_edicion_prev" not in st.session_state or st.session_state["master_edicion_prev"] != st.session_state["master_edicion"]:
                 for idx_f in range(len(FRANJAS_HORARIAS_POSIBLES)):
                     st.session_state[f"ed_f_{idx_f}"] = st.session_state["master_edicion"]
@@ -533,7 +563,6 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
             cols_ed = st.columns(4)
             franjas_editadas_seleccionadas = []
             for idx_f, hora_f in enumerate(FRANJAS_HORARIAS_POSIBLES):
-                # Inicializamos si no existe en la sesión
                 if f"ed_f_{idx_f}" not in st.session_state:
                     st.session_state[f"ed_f_{idx_f}"] = hora_f in franjas_guardadas_act if franjas_str_act else True
                 
