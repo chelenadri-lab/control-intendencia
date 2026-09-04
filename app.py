@@ -139,6 +139,7 @@ df_seguimiento = cargar_seguimiento()
 st.sidebar.title("📌 Menú de Control")
 menu = st.sidebar.selectbox("Selecciona una opción", [
     "🕒 Turnos de Simulacro (En Vivo)",
+    "📋 Parrilla Teórica Simulada",
     "📊 Cuadro Resumen y Progreso", 
     "📅 Control y Edición de Sesiones",
     "👥 Gestión de Opositores y Perfiles",
@@ -309,6 +310,80 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
                 df_seguimiento = pd.concat([df_seguimiento, nuevo_reg], ignore_index=True)
                 df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False, encoding="utf-8")
                 st.success(f"¡Evaluación de {alumno_en_puerta} guardada con éxito!")
+
+elif menu == "📋 Parrilla Teórica Simulada":
+    st.subheader("📋 Simulador de Parrilla Teórica por Preferencias Horarias")
+    st.info("Esta herramienta permite comprobar de forma teórica cómo se organizarían los turnos de la tarde cruzando la disponibilidad registrada en los perfiles de todos los alumnos activos.")
+
+    # Selección rápida de qué alumnos asisten para la simulación
+    asistentes_simulacion = st.multiselect(
+        "Selecciona los opositores que participan en esta simulación:",
+        options=lista_alumnos,
+        default=lista_alumnos
+    )
+
+    if not asistentes_simulacion:
+        st.warning("⚠️ Selecciona al menos un opositor para generar la simulación.")
+    else:
+        if st.button("🚀 Generar Simulación Teórica de Turnos"):
+            # 1. Cargar disponibilidades
+            disp_alumnos = {}
+            for al in asistentes_simulacion:
+                row_al = df_alumnos_db[df_alumnos_db["Alumno"] == al]
+                if not row_al.empty:
+                    f_str = str(row_al.iloc[0]["Franja_Defecto"])
+                    f_list = [f.strip() for f in f_str.split(",") if f.strip()]
+                    disp_alumnos[al] = f_list if f_list else FRANJAS_HORARIAS_POSIBLES
+                else:
+                    disp_alumnos[al] = FRANJAS_HORARIAS_POSIBLES
+
+            # 2. Ordenar por restricción (menor disponibilidad primero)
+            alumnos_ordenados_por_restriccion = sorted(asistentes_simulacion, key=lambda a: len(disp_alumnos[a]))
+
+            asignacion_map = {}
+            horas_disponibles_set = set(FRANJAS_HORARIAS_POSIBLES)
+
+            for al in alumnos_ordenados_por_restriccion:
+                huecos_posibles_alumno = disp_alumnos[al]
+                hueco_asignado = None
+                for h in huecos_posibles_alumno:
+                    if h in horas_disponibles_set:
+                        hueco_asignado = h
+                        break
+                
+                if hueco_asignado:
+                    asignacion_map[hueco_asignado] = al
+                    horas_disponibles_set.remove(hueco_asignado)
+                else:
+                    if horas_disponibles_set:
+                        hueco_emergencia = sorted(list(horas_disponibles_set))[0]
+                        asignacion_map[hueco_emergencia] = al
+                        horas_disponibles_set.remove(hueco_emergencia)
+
+            # 3. Construir tabla de resultados de la simulación
+            data_simulacion = []
+            for hora in FRANJAS_HORARIAS_POSIBLES:
+                alumno_asignado = asignacion_map.get(hora, "--- (Libre) ---")
+                
+                # Obtener detalles de restricciones del alumno asignado para auditoría visual
+                restriccion_txt = "Disponibilidad Total"
+                if alumno_asignado in disp_alumnos:
+                    num_huecos = len(disp_alumnos[alumno_asignado])
+                    if num_huecos < len(FRANJAS_HORARIAS_POSIBLES):
+                        restriccion_txt = f"Limitado ({num_huecos} franjas posibles)"
+
+                data_simulacion.append({
+                    "Hora": hora,
+                    "Opositor Asignado": alumno_asignado,
+                    "Nivel de Restricción / Preferencia": restriccion_txt
+                })
+
+            df_resultado_sim = pd.DataFrame(data_simulacion)
+            st.success("¡Simulación teórica generada con éxito aplicando la prioridad por restricciones!")
+            st.dataframe(df_resultado_sim, use_container_width=True, hide_index=True)
+            
+            csv_sim = df_resultado_sim.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Descargar Simulación Teórica (CSV)", data=csv_sim, file_name="simulacion_parrilla_teorica.csv", mime="text/csv")
 
 elif menu == "📊 Cuadro Resumen y Progreso":
     st.subheader("📊 Cuadro Resumen Global por Opositor")
