@@ -8,15 +8,31 @@ st.set_page_config(page_title="Control Oposición Intendencia", layout="wide")
 DB_ALUMNOS = "alumnos_intendencia_perfiles.csv"
 DB_SEGUIMIENTO = "seguimiento_opositores.csv"
 
-# Lista de referencia en código (sirve como base inicial y para incorporar nuevas incorporaciones automáticamente)
+# Lista de referencia en código actualizada (sirve como base inicial y para incorporar nuevas incorporaciones automáticamente)
 ALUMNOS_INICIALES = [
-    "Estrella Alcoba", "Carmen Andrés Albaladejo", "Carlos Báez Gutiérrez", 
-    "Alberto Bravo", "Javier Carreras", "Cristian Carrillo", "Fernando Casanova", 
-    "Nieves de Loresecha Palma", "Cristian Dorado", "Enrique Flores Carretero", 
-    "Nicolás Ibáñez", "Fermín Maeztu", "Gonzalo Martínez", "Christian Morales", 
-    "Pablo Noya Marín", "Diego Olías", "Paula Panadero", "Marcos Rivero López", 
-    "José María Rodríguez", "María Serrano Galindo", "Gonzalo Suero", 
-    "Adrián Valenzuela", "Erik Arnold Van Lieshout", "Daniel Varas del Peso"
+    "Estrella Alcoba",
+    "Carlos Báez Gutiérrez",
+    "Alberto Bravo",
+    "Javier Carreras",
+    "Cristian Carrillo",
+    "Fernando Casanova",
+    "Nieves de Loresecha Palma",
+    "Cristian Dorado",
+    "Enrique Flores Carretero",
+    "Nicolás Ibáñez",
+    "Fermín Maeztu",
+    "Gonzalo Martínez",
+    "Christian Morales",
+    "Pablo Noya Marín",
+    "Diego Olías",
+    "Paula Panadero",
+    "Marcos Rivero López",
+    "José María Rodríguez",
+    "María Serrano Galindo",
+    "Gonzalo Suero",
+    "Erik Arnold Van Lieshout",
+    "Daniel Varas del Peso",
+    "Eduardo García Pinilla"
 ]
 
 bloques_oposition = [
