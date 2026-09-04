@@ -518,22 +518,27 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
             nuevo_bloque_hab = st.selectbox("Bloque Habitual", bloques_oposition, index=idx_bh)
             
             st.markdown("---")
-            # CASILLA MAESTRA PARA SELECCIONAR / DESMARCAR TODAS LAS HORAS DE GOLPE
-            todas_seleccionadas_por_defecto = len(franjas_guardadas_act) == len(FRANJAS_HORARIAS_POSIBLES)
-            seleccionar_todas_horas = st.checkbox("✅ Marcar / Desmarcar todas las franjas horarias a la vez", value=todas_seleccionadas_por_defecto)
             
+            # CASILLA MAESTRA CON SINCRONIZACIÓN DE ESTADO
+            todas_seleccionadas_por_defecto = len(franjas_guardadas_act) == len(FRANJAS_HORARIAS_POSIBLES)
+            seleccionar_todas_horas = st.checkbox("✅ Marcar / Desmarcar todas las franjas horarias a la vez", value=todas_seleccionadas_por_defecto, key="master_edicion")
+            
+            # Si cambia la casilla maestra, forzamos el estado de todas las franjas individuales en st.session_state
+            if "master_edicion_prev" not in st.session_state or st.session_state["master_edicion_prev"] != st.session_state["master_edicion"]:
+                for idx_f in range(len(FRANJAS_HORARIAS_POSIBLES)):
+                    st.session_state[f"ed_f_{idx_f}"] = st.session_state["master_edicion"]
+                st.session_state["master_edicion_prev"] = st.session_state["master_edicion"]
+
             st.markdown("**Disponibilidad por franjas de 15 minutos:**")
             cols_ed = st.columns(4)
             franjas_editadas_seleccionadas = []
             for idx_f, hora_f in enumerate(FRANJAS_HORARIAS_POSIBLES):
-                # Si el checkbox maestro está activado, todas se marcan; si está desactivado, se limpian, salvo que el usuario cambie alguna individualmente
-                if seleccionar_todas_horas:
-                    default_chk = True
-                else:
-                    default_chk = hora_f in franjas_guardadas_act if franjas_str_act else False
+                # Inicializamos si no existe en la sesión
+                if f"ed_f_{idx_f}" not in st.session_state:
+                    st.session_state[f"ed_f_{idx_f}"] = hora_f in franjas_guardadas_act if franjas_str_act else True
                 
                 with cols_ed[idx_f % 4]:
-                    if st.checkbox(hora_f, value=default_chk, key=f"ed_f_{idx_f}"):
+                    if st.checkbox(hora_f, key=f"ed_f_{idx_f}"):
                         franjas_editadas_seleccionadas.append(hora_f)
             
             if st.form_submit_button("Guardar Cambios"):
@@ -566,13 +571,20 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
             st.markdown("---")
             seleccionar_todas_nuevas = st.checkbox("✅ Marcar / Desmarcar todas las franjas horarias a la vez", value=True, key="master_nuevo")
             
+            if "master_nuevo_prev" not in st.session_state or st.session_state["master_nuevo_prev"] != st.session_state["master_nuevo"]:
+                for idx_f in range(len(FRANJAS_HORARIAS_POSIBLES)):
+                    st.session_state[f"nue_f_{idx_f}"] = st.session_state["master_nuevo"]
+                st.session_state["master_nuevo_prev"] = st.session_state["master_nuevo"]
+
             st.markdown("**Disponibilidad por franjas de 15 minutos:**")
             cols_nue = st.columns(4)
             franjas_nuevas_seleccionadas = []
             for idx_f, hora_f in enumerate(FRANJAS_HORARIAS_POSIBLES):
-                default_chk_nue = True if seleccionar_todas_nuevas else False
+                if f"nue_f_{idx_f}" not in st.session_state:
+                    st.session_state[f"nue_f_{idx_f}"] = True
+                
                 with cols_nue[idx_f % 4]:
-                    if st.checkbox(hora_f, value=default_chk_nue, key=f"nue_f_{idx_f}"):
+                    if st.checkbox(hora_f, key=f"nue_f_{idx_f}"):
                         franjas_nuevas_seleccionadas.append(hora_f)
             
             if st.form_submit_button("Crear Opositor"):
