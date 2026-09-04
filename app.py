@@ -27,7 +27,6 @@ bloques_oposition = [
     "Contabilidad"
 ]
 
-# Definición explícita de los temas de cada bloque (Constitucional con sus 7 temas exactos)
 TEMAS_POR_BLOQUE = {
     "Constitucional": [
         "Tema 1: La Constitución Española de 1978. Caracteres y estructura. Los principios constitucionales y valores superiores.",
@@ -69,7 +68,7 @@ OPCIONES_ERRORES = [
 
 def cargar_alumnos():
     if os.path.exists(DB_ALUMNOS):
-        df = pd.read_csv(DB_ALUMNOS)
+        df = pd.read_csv(DB_ALUMNOS, encoding="utf-8")
         if "Asiste_Por_Defecto" not in df.columns:
             df["Asiste_Por_Defecto"] = True
         if "Franja_Defecto" not in df.columns:
@@ -91,15 +90,15 @@ def cargar_alumnos():
             "Bloque_Habitual": [bloques_oposition[0] for _ in ALUMNOS_INICIALES],
             "Franja_Defecto": [",".join(FRANJAS_HORARIAS_POSIBLES) for _ in ALUMNOS_INICIALES]
         })
-        df.to_csv(DB_ALUMNOS, index=False)
+        df.to_csv(DB_ALUMNOS, index=False, encoding="utf-8")
         return df
 
 def guardar_alumnos(df):
-    df.to_csv(DB_ALUMNOS, index=False)
+    df.to_csv(DB_ALUMNOS, index=False, encoding="utf-8")
 
 def cargar_seguimiento():
     if os.path.exists(DB_SEGUIMIENTO):
-        df = pd.read_csv(DB_SEGUIMIENTO)
+        df = pd.read_csv(DB_SEGUIMIENTO, encoding="utf-8")
         if "Asistencia" not in df.columns:
             df["Asistencia"] = "Asiste"
         return df
@@ -109,7 +108,7 @@ def cargar_seguimiento():
             "Tema_Escrito", "Tiempo_Minutos", "Estado_Semaforo", 
             "Errores_Frecuentes", "Feedback_Cualitativo"
         ])
-        df_inicial.to_csv(DB_SEGUIMIENTO, index=False)
+        df_inicial.to_csv(DB_SEGUIMIENTO, index=False, encoding="utf-8")
         return df_inicial
 
 def parsear_temas(texto_temas):
@@ -193,7 +192,7 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
             df_seguimiento = pd.concat([df_seguimiento, nuevo_reg], ignore_index=True)
             
         guardar_alumnos(df_alumnos_db)
-        df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
+        df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False, encoding="utf-8")
         st.toast("¡Configuración guardada y registros base generados!", icon="✅")
 
     st.markdown("---")
@@ -296,7 +295,7 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
                     "Feedback_Cualitativo": [feedback_flash]
                 })
                 df_seguimiento = pd.concat([df_seguimiento, nuevo_reg], ignore_index=True)
-                df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
+                df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False, encoding="utf-8")
                 st.success(f"¡Evaluación de {alumno_en_puerta} guardada con éxito!")
 
 elif menu == "📊 Cuadro Resumen y Progreso":
@@ -401,7 +400,7 @@ elif menu == "📅 Control y Edición de Sesiones":
                             df_seguimiento.loc[i_real, 'Estado_Semaforo'] = e_semaforo
                             df_seguimiento.loc[i_real, 'Feedback_Cualitativo'] = e_feedback
                             
-                            df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
+                            df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False, encoding="utf-8")
                             st.success("¡Sesión actualizada correctamente!")
                             st.rerun()
                             
@@ -411,7 +410,7 @@ elif menu == "📅 Control y Edición de Sesiones":
                                                   (df_seguimiento['Bloque'] == row['Bloque'])].index
                         if not orig_idx.empty:
                             df_seguimiento = df_seguimiento.drop(orig_idx).reset_index(drop=True)
-                            df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
+                            df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False, encoding="utf-8")
                             st.success("¡Sesión eliminada correctamente!")
                             st.rerun()
 
@@ -449,7 +448,7 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
             for idx_f, hora_f in enumerate(FRANJAS_HORARIAS_POSIBLES):
                 default_chk = hora_f in franjas_guardadas_act if franjas_str_act else True
                 with cols_ed[idx_f % 4]:
-                    if st.checkbox(hora_f, value=default_chk, key=f"ed_f_{alumno_editar}_{idx_f}"):
+                    if st.checkbox(hora_f, value=default_chk, key=f"ed_f_{idx_f}"):
                         franjas_editadas_seleccionadas.append(hora_f)
             
             if st.form_submit_button("Guardar Cambios"):
@@ -464,7 +463,7 @@ elif menu == "👥 Gestión de Opositores y Perfiles":
                 guardar_alumnos(df_alumnos_db)
                 if alumno_editar != nuevo_nombre_val:
                     df_seguimiento.loc[df_seguimiento["Alumno"] == alumno_editar, "Alumno"] = nuevo_nombre_val
-                    df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False)
+                    df_seguimiento.to_csv(DB_SEGUIMIENTO, index=False, encoding="utf-8")
                 st.success("¡Perfil actualizado con éxito!")
                 st.rerun()
                 
@@ -557,7 +556,6 @@ elif menu == "📊 Histórico, Bloques y Desviación":
         df_det_bloques = pd.DataFrame(detalle_bloques)
         st.dataframe(df_det_bloques, use_container_width=True)
         
-        # Desplegable visual para ver los títulos exactos de cada tema por bloque
         with st.expander("📖 Ver Temario Completo y Títulos por Bloque"):
             bloque_seleccionado_temario = st.selectbox("Selecciona bloque para consultar sus temas:", bloques_oposition)
             temas_del_bloque = TEMAS_POR_BLOQUE.get(bloque_seleccionado_temario, [])
@@ -593,5 +591,3 @@ elif menu == "📊 Histórico, Bloques y Desviación":
             st.dataframe(df_al_seg, use_container_width=True)
             csv_data = df_al_seg.to_csv(index=False).encode('utf-8')
             st.download_button("📥 Descargar Histórico (CSV)", data=csv_data, file_name=f"historial_{alumno_filtro.replace(' ', '_')}.csv", mime="text/csv")
-        else:
-            st.info("Aún no hay registros guardados para este opositor.")
