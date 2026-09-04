@@ -207,7 +207,7 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
             st.session_state["df_parrilla_gen"] = None
 
         if st.button("🤖 Generar / Distribuir Parrilla por Disponibilidad") or st.session_state["df_parrilla_gen"] is None:
-            alumnos_pendientes = set(alumnos_asistentes)
+            # 1. Cargar la disponibilidad real de cada asistente
             disp_alumnos = {}
             for al in alumnos_asistentes:
                 row_al = df_alumnos_db[df_alumnos_db["Alumno"] == al]
@@ -218,22 +218,34 @@ if menu == "🕒 Turnos de Simulacro (En Vivo)":
                 else:
                     disp_alumnos[al] = FRANJAS_HORARIAS_POSIBLES
 
-            asignacion_map = {}
-            for hora in FRANJAS_HORARIAS_POSIBLES:
-                candidatos = [al for al in alumnos_pendientes if hora in disp_alumnos.get(al, FRANJAS_HORARIAS_POSIBLES)]
-                if candidatos:
-                    elegido = candidatos[0]
-                    asignacion_map[hora] = elegido
-                    alumnos_pendientes.remove(elegido)
+            # 2. ORDENAR LOS OPOSITORES DE MENOS A MÁS DISPONIBILIDAD (Prioridad estricta a los restrictivos)
+            alumnos_ordenados_por_restriccion = sorted(alumnos_asistentes, key=lambda a: len(disp_alumnos[a]))
+
+            asignacion_map = {}  # Relación Hora -> Alumno
+            horas_disponibles_set = set(FRANJAS_HORARIAS_POSIBLES)
+
+            # 3. Asignar primero a los que tienen menos huecos posibles
+            for al in alumnos_ordenados_por_restriccion:
+                huecos_posibles_alumno = disp_alumnos[al]
+                
+                # Buscar un hueco libre que este alumno acepte
+                hueco_asignado = None
+                for h in huecos_posibles_alumno:
+                    if h in horas_disponibles_set:
+                        hueco_asignado = h
+                        break
+                
+                if hueco_asignado:
+                    asignacion_map[hueco_asignado] = al
+                    horas_disponibles_set.remove(hueco_asignado)
                 else:
-                    asignacion_map[hora] = ""
+                    # Si sus horas preferidas están ocupadas, se le asigna la primera hora libre que quede
+                    if horas_disponibles_set:
+                        hueco_emergencia = sorted(list(horas_disponibles_set))[0]
+                        asignacion_map[hueco_emergencia] = al
+                        horas_disponibles_set.remove(hueco_emergencia)
 
-            horas_libres = [h for h, al in asignacion_map.items() if al == ""]
-            for hora in horas_libres:
-                if alumnos_pendientes:
-                    elegido = alumnos_pendientes.pop()
-                    asignacion_map[hora] = elegido
-
+            # 4. Construir la tabla final ordenada por hora cronológica
             data_parrilla = []
             for hora in FRANJAS_HORARIAS_POSIBLES:
                 data_parrilla.append({
