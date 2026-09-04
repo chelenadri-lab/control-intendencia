@@ -1,0 +1,15 @@
+name: Mantener App Activa
+
+on:
+  schedule:
+    # Se ejecuta automáticamente cada 4 horas
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hacer ping a Streamlit
+        run: |
+          curl -I https://control-asistencia.streamlit.app
